@@ -1,0 +1,2 @@
+project_id,provider,endpoint_url,signing_secret_env,events_subscribed,retry_policy,idempotency_key_field,expected_latency_ms,dlq,example_payloads_dir
+p003,stripe,https://api.example.com/webhooks/stripe,P003_STRIPE_SECRET,"invoice.paid;customer.subscription.updated","max_retries:5;backoff:exponential",id,1500,queues/billing-dlq,examples/stripe

@@ -1,0 +1,3 @@
+project_id,platform,repo_url,package_name,versioning_strategy,release_notes_path,store_credentials_dir,signing_info_dir,distribution,post_release_checks
+a001,npm,https://github.com/acme/utils,@acme/utils,semver,docs/RELEASE_NOTES.md,secrets/a001,secrets/a001,public,"smoke-tests;docs-updated"
+a002,ios,https://github.com/acme/ios-app,com.acme.app,calver,docs/RELEASE_NOTES.md,secrets/a002,secrets/a002,testflight,"launch-checklist;crash-free>99%"

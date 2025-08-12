@@ -1,0 +1,2 @@
+project_id,source_design_url,copy_dir,assets_dir,build_tool,responsiveness_targets,seo_meta_done,analytics_id,forms,accessibility_target,i18n_locales
+p001,https://www.figma.com/file/XXXXX,content/p001,assets/p001,vite,320|768|1024|1440,no,GA4-XXXX,formspree,WCAG 2.1 AA,"en;es"

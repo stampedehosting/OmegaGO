@@ -1,0 +1,31 @@
+{
+  "name": "portfolio-ops",
+  "version": "1.0.0",
+  "description": "Dashboard to complete deliverables",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "kickoff:dry": "node scripts/kickoff.js --dry-run",
+    "kickoff:apply": "node scripts/kickoff.js --apply"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stampedehosting/OmegaGO.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/stampedehosting/OmegaGO/issues"
+  },
+  "homepage": "https://github.com/stampedehosting/OmegaGO#readme",
+  "private": "true",
+  "type": "module",
+  "dependencies": {
+    "csv-parse": "^6.1.0",
+    "dotenv": "^17.2.1",
+    "fast-glob": "^3.3.3",
+    "fs-extra": "^11.3.1",
+    "simple-git": "^3.28.0"
+  }
+}
