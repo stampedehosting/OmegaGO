@@ -1,0 +1,46 @@
+{
+  "web_servers": [
+    {
+      "ip": "192.168.1.100",
+      "hostname": "web01.stampedehosting.com",
+      "specs": "2 vCPU, 4GB RAM, 50GB SSD",
+      "status": "active"
+    },
+    {
+      "ip": "192.168.1.101", 
+      "hostname": "web02.stampedehosting.com",
+      "specs": "2 vCPU, 4GB RAM, 50GB SSD",
+      "status": "active"
+    }
+  ],
+  "db_servers": [
+    {
+      "ip": "192.168.1.200",
+      "hostname": "db01.stampedehosting.com", 
+      "specs": "4 vCPU, 8GB RAM, 100GB SSD",
+      "status": "active"
+    }
+  ],
+  "worker_servers": [
+    {
+      "ip": "192.168.1.300",
+      "hostname": "worker01.stampedehosting.com",
+      "specs": "8 vCPU, 16GB RAM, 200GB SSD", 
+      "status": "active"
+    },
+    {
+      "ip": "192.168.1.301",
+      "hostname": "worker02.stampedehosting.com",
+      "specs": "8 vCPU, 16GB RAM, 200GB SSD",
+      "status": "active"
+    }
+  ],
+  "load_balancers": [
+    {
+      "ip": "192.168.1.10",
+      "hostname": "lb01.stampedehosting.com",
+      "specs": "2 vCPU, 2GB RAM, 25GB SSD",
+      "status": "active"
+    }
+  ]
+}

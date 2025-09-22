@@ -1,0 +1,308 @@
+name: Automated Deployment Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      kit_type:
+        description: 'Kit type to deploy'
+        required: true
+        default: 'starter_site'
+        type: choice
+        options:
+        - starter_site
+        - course_launch
+        - developer_sandbox
+      customer_id:
+        description: 'Customer ID'
+        required: true
+        type: string
+      domain_name:
+        description: 'Domain name'
+        required: true
+        type: string
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio
+        pip install -r requirements.txt
+    
+    - name: Run Python tests
+      run: |
+        python -m pytest tests/ -v
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Install Node dependencies
+      working-directory: ./customer-portal
+      run: npm ci
+    
+    - name: Run frontend tests
+      working-directory: ./customer-portal
+      run: npm test
+
+  build-api:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Build API package
+      run: |
+        python setup.py sdist bdist_wheel
+    
+    - name: Upload API artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: api-package
+        path: dist/
+
+  build-frontend:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+    
+    - name: Install dependencies
+      working-directory: ./customer-portal
+      run: npm ci
+    
+    - name: Build frontend
+      working-directory: ./customer-portal
+      run: npm run build
+    
+    - name: Upload frontend artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: customer-portal/dist/
+
+  deploy-to-staging:
+    needs: [build-api, build-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download API artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: api-package
+        path: dist/
+    
+    - name: Download frontend artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend-build/
+    
+    - name: Deploy to staging server
+      env:
+        STAGING_HOST: ${{ secrets.STAGING_HOST }}
+        STAGING_USER: ${{ secrets.STAGING_USER }}
+        STAGING_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      run: |
+        echo "$STAGING_KEY" > staging_key.pem
+        chmod 600 staging_key.pem
+        
+        # Deploy API
+        scp -i staging_key.pem -r dist/ $STAGING_USER@$STAGING_HOST:/opt/stampede-hosting/api/
+        
+        # Deploy frontend
+        scp -i staging_key.pem -r frontend-build/ $STAGING_USER@$STAGING_HOST:/var/www/html/portal/
+        
+        # Restart services
+        ssh -i staging_key.pem $STAGING_USER@$STAGING_HOST "sudo systemctl restart stampede-api && sudo systemctl reload nginx"
+
+  deploy-to-production:
+    needs: [build-api, build-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download API artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: api-package
+        path: dist/
+    
+    - name: Download frontend artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend-build/
+    
+    - name: Deploy to production servers
+      env:
+        PROD_HOSTS: ${{ secrets.PRODUCTION_HOSTS }}
+        PROD_USER: ${{ secrets.PRODUCTION_USER }}
+        PROD_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+      run: |
+        echo "$PROD_KEY" > prod_key.pem
+        chmod 600 prod_key.pem
+        
+        # Deploy to multiple production servers
+        for host in $(echo $PROD_HOSTS | tr ',' ' '); do
+          echo "Deploying to $host"
+          
+          # Deploy API
+          scp -i prod_key.pem -r dist/ $PROD_USER@$host:/opt/stampede-hosting/api/
+          
+          # Deploy frontend
+          scp -i prod_key.pem -r frontend-build/ $PROD_USER@$host:/var/www/html/portal/
+          
+          # Restart services
+          ssh -i prod_key.pem $PROD_USER@$host "sudo systemctl restart stampede-api && sudo systemctl reload nginx"
+        done
+
+  provision-customer-environment:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment: production
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Install Playwright
+      run: |
+        playwright install
+        playwright install-deps
+    
+    - name: Run provisioning pipeline
+      env:
+        SSH_PRIVATE_KEY_PATH: ${{ secrets.SSH_PRIVATE_KEY_PATH }}
+        SSH_USER: ${{ secrets.SSH_USER }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPLIT_TOKEN: ${{ secrets.REPLIT_TOKEN }}
+        DNS_PROVIDER_API_KEY: ${{ secrets.DNS_PROVIDER_API_KEY }}
+      run: |
+        python src/provisioning_pipeline.py \
+          --kit-type ${{ github.event.inputs.kit_type }} \
+          --customer-id ${{ github.event.inputs.customer_id }} \
+          --domain-name ${{ github.event.inputs.domain_name }}
+    
+    - name: Run automation workflows
+      env:
+        GITHUB_USERNAME: ${{ secrets.AUTOMATION_GITHUB_USERNAME }}
+        GITHUB_PASSWORD: ${{ secrets.AUTOMATION_GITHUB_PASSWORD }}
+        REPLIT_USERNAME: ${{ secrets.AUTOMATION_REPLIT_USERNAME }}
+        REPLIT_PASSWORD: ${{ secrets.AUTOMATION_REPLIT_PASSWORD }}
+      run: |
+        python automation/automation_orchestrator.py \
+          --workflow-type ${{ github.event.inputs.kit_type }} \
+          --customer-id ${{ github.event.inputs.customer_id }}
+    
+    - name: Upload provisioning logs
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: provisioning-logs
+        path: logs/
+
+  deploy-to-replit:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs: provision-customer-environment
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests python-dotenv
+    
+    - name: Deploy to Replit
+      env:
+        REPLIT_TOKEN: ${{ secrets.REPLIT_TOKEN }}
+      run: |
+        python scripts/deploy_to_replit.py \
+          --kit-type ${{ github.event.inputs.kit_type }} \
+          --customer-id ${{ github.event.inputs.customer_id }} \
+          --domain-name ${{ github.event.inputs.domain_name }}
+
+  notify-completion:
+    runs-on: ubuntu-latest
+    needs: [deploy-to-replit, provision-customer-environment]
+    if: always()
+    steps:
+    - name: Notify customer via email
+      env:
+        SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        CUSTOMER_EMAIL: ${{ secrets.CUSTOMER_EMAIL }}
+      run: |
+        curl -X "POST" "https://api.sendgrid.com/v3/mail/send" \
+          -H "Authorization: Bearer $SENDGRID_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "personalizations": [{
+              "to": [{"email": "'$CUSTOMER_EMAIL'"}],
+              "subject": "Your Stampede Hosting Environment is Ready!"
+            }],
+            "from": {"email": "noreply@stampedehosting.com"},
+            "content": [{
+              "type": "text/html",
+              "value": "<h1>Your environment is ready!</h1><p>Your '${{ github.event.inputs.kit_type }}' environment has been successfully deployed to '${{ github.event.inputs.domain_name }}'.</p>"
+            }]
+          }'
+    
+    - name: Post to Slack
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      run: |
+        curl -X POST -H 'Content-type: application/json' \
+          --data '{"text":"🚀 New deployment completed for customer '${{ github.event.inputs.customer_id }}' - '${{ github.event.inputs.kit_type }}' kit deployed to '${{ github.event.inputs.domain_name }}'"}' \
+          $SLACK_WEBHOOK

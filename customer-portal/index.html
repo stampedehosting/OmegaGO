@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stampede Hosting - Customer Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .kits-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .kit-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 2rem;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .kit-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .kit-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .kit-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .kit-card p {
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+        }
+
+        .deploy-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .deploy-btn:hover {
+            background: #c0392b;
+            transform: scale(1.05);
+        }
+
+        .features {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 2rem;
+            margin-top: 2rem;
+        }
+
+        .features h2 {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .features-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .feature-icon {
+            font-size: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .kits-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Stampede Hosting</h1>
+            <p>Deploy high-quality digital assets faster than you can pop a bag of popcorn!</p>
+        </div>
+
+        <div class="kits-grid">
+            <div class="kit-card">
+                <div class="kit-icon">🌐</div>
+                <h3>Starter Site Kit</h3>
+                <p>Professional website with modern design, responsive layout, and SEO optimization. Perfect for businesses getting started online.</p>
+                <button class="deploy-btn" onclick="deployKit('starter_site')">Deploy Now</button>
+            </div>
+
+            <div class="kit-card">
+                <div class="kit-icon">🎓</div>
+                <h3>Course Launch Kit</h3>
+                <p>Complete online learning platform with course management, student enrollment, and payment processing. Launch your educational business today.</p>
+                <button class="deploy-btn" onclick="deployKit('course_launch')">Deploy Now</button>
+            </div>
+
+            <div class="kit-card">
+                <div class="kit-icon">💻</div>
+                <h3>Developer Sandbox</h3>
+                <p>Multi-language development environment with code execution, file management, and collaboration tools. Perfect for development teams.</p>
+                <button class="deploy-btn" onclick="deployKit('developer_sandbox')">Deploy Now</button>
+            </div>
+        </div>
+
+        <div class="features">
+            <h2>Why Choose Stampede Hosting?</h2>
+            <div class="features-list">
+                <div class="feature-item">
+                    <span class="feature-icon">⚡</span>
+                    <span>Lightning-fast deployment in minutes</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-icon">🔧</span>
+                    <span>Automated provisioning pipeline</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-icon">🌐</span>
+                    <span>Custom domain and SSL included</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-icon">🚀</span>
+                    <span>Instant Replit demos</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-icon">📊</span>
+                    <span>Real-time monitoring and analytics</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-icon">🔒</span>
+                    <span>Enterprise-grade security</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-icon">📞</span>
+                    <span>24/7 expert support</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-icon">💰</span>
+                    <span>Transparent, affordable pricing</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function deployKit(kitType) {
+            const customerID = prompt('Enter your Customer ID:');
+            if (!customerID) return;
+            
+            const domainName = prompt('Enter your desired domain name:');
+            if (!domainName) return;
+            
+            // Show deployment status
+            alert(`🚀 Deploying ${kitType.replace('_', ' ').toUpperCase()} kit for ${customerID}!\n\nDomain: ${domainName}\n\nYou will receive an email with deployment details shortly.`);
+            
+            // In a real implementation, this would trigger the GitHub Actions workflow
+            console.log('Deployment triggered:', {
+                kit_type: kitType,
+                customer_id: customerID,
+                domain_name: domainName
+            });
+            
+            // Simulate deployment process
+            setTimeout(() => {
+                alert(`✅ Deployment complete!\n\nYour ${kitType.replace('_', ' ')} is now live at:\n${domainName}\n\nReplit demo: Available in your dashboard`);
+            }, 3000);
+        }
+        
+        console.log('🚀 Stampede Hosting Customer Portal loaded!');
+        console.log('Available kits: Starter Site, Course Launch, Developer Sandbox');
+    </script>
+</body>
+</html>
