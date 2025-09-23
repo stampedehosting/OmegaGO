@@ -1,0 +1,89 @@
+# Flask and Core Dependencies
+Flask==2.3.3
+Flask-SQLAlchemy==3.0.5
+Flask-Migrate==4.0.5
+Flask-JWT-Extended==4.5.3
+Flask-CORS==4.0.0
+
+# Database
+SQLAlchemy==2.0.21
+psycopg2-binary==2.9.7  # PostgreSQL adapter
+sqlite3  # Built-in with Python
+
+# HTTP Requests and API Integration
+requests==2.31.0
+urllib3==2.0.4
+
+# Security and Authentication
+Werkzeug==2.3.7
+cryptography==41.0.4
+PyJWT==2.8.0
+
+# Data Processing and Validation
+marshmallow==3.20.1
+python-dateutil==2.8.2
+email-validator==2.0.0
+
+# Email Services
+sendgrid==6.10.0
+flask-mail==0.9.1
+
+# File Storage and Cloud Services
+boto3==1.28.57  # AWS S3
+botocore==1.31.57
+
+# Social Media APIs
+facebook-sdk==3.1.0
+python-linkedin-v2==2.0.1a0
+tweepy==4.14.0
+
+# Payment Processing
+stripe==6.6.0
+
+# Background Tasks and Scheduling
+celery==5.3.2
+redis==5.0.0
+
+# Monitoring and Logging
+sentry-sdk[flask]==1.32.0
+python-json-logger==2.0.7
+
+# Development and Testing
+pytest==7.4.2
+pytest-flask==1.2.0
+pytest-cov==4.1.0
+factory-boy==3.3.0
+faker==19.6.2
+
+# Code Quality
+flake8==6.1.0
+black==23.9.1
+isort==5.12.0
+
+# Documentation
+sphinx==7.2.6
+flask-restx==1.2.0  # API documentation
+
+# Environment and Configuration
+python-dotenv==1.0.0
+click==8.1.7
+
+# Utilities
+python-slugify==8.0.1
+phonenumbers==8.13.22
+pycountry==22.3.5
+
+# Web Scraping (if needed for data collection)
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Data Export
+openpyxl==3.1.2
+pandas==2.1.1
+
+# Image Processing (if needed)
+Pillow==10.0.1
+
+# HTTP Server for Production
+gunicorn==21.2.0
+gevent==23.7.0
