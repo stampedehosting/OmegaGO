@@ -1,0 +1,2 @@
+project_id,url,critical_paths,login_required,test_accounts_json,devices,browsers,performance_budgets_ms,visual_baseline_ref,ci_matrix
+p002,https://shop.example.com,"/cart;/checkout;/account/orders",yes,"[{""role"":""shopper"",""username"":""test@example.com"",""password_env"":""P002_USER_PW""}]",desktop;mobile,chromium;firefox;webkit,"fmp:3000;tti:4000",main,os:ubuntu-latest;node:18

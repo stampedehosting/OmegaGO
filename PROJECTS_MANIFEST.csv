@@ -1,0 +1,4 @@
+project_id,name,type,repo_url,subdir,priority,status,owner,domain,deploy_target,ci_provider,env_dir,notes
+p001,Marketing Site,html_site,https://github.com/acme/marketing-site,,P1,blocked,web-team,example.com,vercel,github_actions,secrets/p001,"Needs final copy"
+p002,Checkout E2E,playwright_tests,https://github.com/acme/storefront,,P0,ready,qa-team,,github,github_actions,secrets/p002,"Run on PR and nightly"
+p003,Billing Webhooks,webhook,https://github.com/acme/billing,apps/webhooks/billing,P0,in_progress,backend-team,,aws-lambda,circleci,secrets/p003,"Stripe + Slack"
