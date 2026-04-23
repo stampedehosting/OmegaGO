@@ -1,0 +1,23 @@
+[Unit]
+Description=ai_streamer autonomous AI streamer persona
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/OmegaGO
+EnvironmentFile=-/etc/ai-streamer.env
+ExecStart=/opt/OmegaGO/.venv/bin/python -m ai_streamer.orchestrator \
+  --persona /opt/OmegaGO/ai_streamer/config/persona.yaml \
+  --platforms /opt/OmegaGO/ai_streamer/config/platforms.yaml
+Restart=always
+RestartSec=5
+# OOM kill grace
+OOMScoreAdjust=-200
+# Don't let a runaway leak the whole box
+MemoryHigh=24G
+MemoryMax=28G
+
+[Install]
+WantedBy=multi-user.target

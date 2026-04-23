@@ -1,0 +1,37 @@
+# Core
+pyyaml>=6.0
+pydantic>=2.5
+loguru>=0.7
+aiohttp>=3.9
+httpx>=0.25
+
+# Chat ingestion
+TikTokLive>=6.0       # TikTok internal websocket
+google-api-python-client>=2.100  # YouTube Live chat
+twitchio>=2.8         # Twitch IRC
+
+# LLM client
+ollama>=0.3
+openai>=1.40          # used for vLLM-compatible endpoint and hybrid mode
+
+# TTS
+# Kokoro is loaded directly via huggingface_hub + onnxruntime-gpu in the adapter.
+huggingface_hub>=0.24
+onnxruntime-gpu>=1.18 ; sys_platform != "darwin"
+soundfile>=0.12
+numpy>=1.26
+
+# Avatar — MuseTalk uses its own repo + weights (see avatar/musetalk_adapter.py).
+opencv-python>=4.9
+torch>=2.9 ; platform_machine == "x86_64"   # cu128 wheel for Blackwell
+
+# Output
+av>=12.0              # PyAV for direct RTMP / virtual cam framing
+pyvirtualcam>=0.11    # cross-platform virtual camera
+
+# State
+redis>=5.0
+
+# Optional hybrid
+elevenlabs>=1.0
+anthropic>=0.34
