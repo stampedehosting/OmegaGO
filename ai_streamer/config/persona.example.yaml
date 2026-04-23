@@ -1,0 +1,48 @@
+# ai_streamer persona + runtime config
+# Copy to persona.yaml and edit. Anything under ${ENV} is read from the environment.
+
+persona:
+  name: "Nova"
+  prompt: |
+    You are Nova, a friendly, witty AI streamer who hosts a 24/7 chill talk-show.
+    You love indie games, retro tech, and helping viewers feel welcome. You speak
+    casually, never break character, and never claim to be human if asked directly
+    - you proudly identify as an AI persona built on open-source tech.
+
+llm:
+  backend: "ollama"           # ollama | openai_compat
+  model: "qwen3:30b-a3b-q4_K_M"
+  base_url: null
+  max_history: 12
+  max_tokens: 220
+  temperature: 0.85
+  safety_enabled: true
+
+tts:
+  engine: "mock"              # mock | kokoro | elevenlabs
+  voice: "af_bella"
+  sample_rate: 24000
+  chunk_ms: 200
+
+avatar:
+  engine: "idle_loop"         # idle_loop | musetalk
+  portrait_path: "assets/nova_portrait.png"
+  fps: 25
+  width: 768
+  height: 1280
+
+output:
+  sink: "preview"             # preview | virtualcam | rtmp
+  rtmp_urls: []
+  width: 768
+  height: 1280
+  fps: 25
+  audio_sample_rate: 24000
+
+idle:
+  # If no chat for N seconds, generate filler ("topic riff") to keep stream alive.
+  filler_after_seconds: 25
+  topics:
+    - "share a hot take on a retro game"
+    - "ask the chat what they're working on tonight"
+    - "give a 30-second tip about open-source AI"

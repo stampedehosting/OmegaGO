@@ -1,0 +1,22 @@
+# Platform ingestion + streaming configuration.
+# Copy to platforms.yaml. Sensitive fields should be left blank and read from env.
+
+ingest:
+  - type: mock
+    interval_seconds: 6
+  # - type: youtube
+  #   video_id: "REPLACE_WITH_LIVE_VIDEO_ID"
+  # - type: twitch
+  #   channel: "your_channel"
+  # - type: tiktok
+  #   username: "your_handle"
+  # - type: linkedin    # requires RESTREAM_TOKEN
+
+stream:
+  # Add destinations as needed. Stream keys read from env to keep them out of git.
+  destinations: []
+  # destinations:
+  #   - name: "youtube"
+  #     url: "rtmp://a.rtmp.youtube.com/live2/${YOUTUBE_STREAM_KEY}"
+  #   - name: "twitch"
+  #     url: "rtmp://live.twitch.tv/app/${TWITCH_STREAM_KEY}"

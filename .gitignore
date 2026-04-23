@@ -1,0 +1,7 @@
+
+
+# ai_streamer
+ai_streamer/**/__pycache__/
+ai_streamer/config/persona.yaml
+ai_streamer/config/platforms.yaml
+ai_streamer/.venv/
