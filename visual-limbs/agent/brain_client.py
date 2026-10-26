@@ -209,12 +209,20 @@ class PerceptionLoop:
             return
         frame = self._get("/frame").content
         parsed = parse_frame(frame, self.parser_url)
-        action = self._sanitize(
-            decide(self.instruction, frame, parsed.get("boxes")))
+        # Snapshot the goal BEFORE deciding — a /instruction POST can land
+        # while decide() is in flight.
+        instruction, rev = self.instruction, self.instruction_rev
+        action = self._sanitize(decide(instruction, frame, parsed.get("boxes")))
         self._seen_seq = seq
-        self._seen_rev = self.instruction_rev
+        self._seen_rev = rev  # record only the revision we decided with
         self._last_decide_at = time.time()
         self._last_terminal = action.get("action") in ("done", "none")
+        if self.instruction_rev != rev:
+            # Goal changed mid-decide — don't execute a stale action; the
+            # next step re-decides with the new instruction.
+            print(f"[brain] instruction changed mid-decide; discarding "
+                  f"{action.get('action')!r}", flush=True)
+            return
         self.last_action = {"action": action, "seq": seq,
                             "boxes": parsed.get("count", 0),
                             "parser_raw": parsed.get("raw", True),

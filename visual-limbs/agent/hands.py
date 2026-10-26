@@ -29,6 +29,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+import requests
+
 # --- optional deps: degrade gracefully ---------------------------------------
 try:
     from playwright.sync_api import sync_playwright
@@ -110,9 +112,13 @@ class Hands:
         idx = int(os.environ.get("AGENT_INDEX", "1"))
         self.cdp_url = (cdp_url or os.environ.get("CHROME_CDP_URL")
                         or f"http://127.0.0.1:{9200 + idx}")
+        self.eyes_url = os.environ.get(
+            "EYES_URL", f"http://127.0.0.1:{8700 + idx}").rstrip("/")
         self._pw = None
         self._browser = None
         self._page = None
+        self._geo_cache: dict | None = None
+        self._geo_at = 0.0
 
     # -- playwright lane ------------------------------------------------------
     def _reset_pw(self) -> None:
@@ -146,6 +152,21 @@ class Hands:
         return self._page
 
     # -- coordinate mapping ----------------------------------------------------
+    def _eyes_geometry(self) -> dict | None:
+        """The exact crop/scale/monitor-origin eyes applies (cached ~5s)."""
+        now = time.time()
+        if self._geo_cache and now - self._geo_at < 5.0:
+            return self._geo_cache
+        try:
+            r = requests.get(f"{self.eyes_url}/geometry",
+                             headers=auth_headers(), timeout=5)
+            geo = r.json()
+            if r.ok and "scale_x" in geo:
+                self._geo_cache, self._geo_at = geo, now
+        except Exception:
+            pass
+        return self._geo_cache
+
     def _display_size(self) -> tuple[int, int]:
         """Native display size for inverse frame->display mapping."""
         if HAS_PYAUTOGUI:
@@ -169,10 +190,16 @@ class Hands:
     def _to_display(self, fx: float, fy: float) -> tuple[int, int]:
         """Inverse of eyes' center-crop+scale: frame px -> display px.
 
-        eyes crops the display to the frame aspect ratio then rescales to
-        FRAME_W x FRAME_H; here we undo it so desktop-lane clicks land on the
-        real target (monitor origin assumed 0,0 for the primary display).
+        Prefers eyes' own /geometry — the monitor origin and crop it actually
+        used — so secondary monitors map correctly. Falls back to deriving
+        the transform from whole-display dimensions (primary monitor).
         """
+        geo = self._eyes_geometry()
+        if geo:
+            return (int(geo["monitor_x0"] + geo["crop_x0"]
+                        + fx * geo["scale_x"]),
+                    int(geo["monitor_y0"] + geo["crop_y0"]
+                        + fy * geo["scale_y"]))
         dw, dh = self._display_size()
         target_ratio = FRAME_W / FRAME_H
         if dw / dh > target_ratio:  # sides were cropped
@@ -183,6 +210,28 @@ class Hands:
             x0, y0 = 0, (dh - crop_h) // 2
         return (int(x0 + fx * crop_w / FRAME_W),
                 int(y0 + fy * crop_h / FRAME_H))
+
+    @staticmethod
+    def _to_viewport(page, dx: int, dy: int) -> tuple[int, int] | None:
+        """Display px -> page viewport px, or None when outside the content
+        area. Browser chrome/toolbar sit between the frame's top edge and the
+        page, so raw scaling is wrong — subtract the window's content origin.
+        """
+        try:
+            session = page.context.new_cdp_session(page)
+            bounds = session.send("Browser.getWindowForTarget")["bounds"]
+        except Exception:
+            return None
+        vp = page.viewport_size
+        if not vp:
+            return None
+        ox = int(bounds.get("left", 0))
+        oy = int(bounds.get("top", 0)) + (
+            int(bounds.get("height", 0)) - int(vp["height"]))
+        vx, vy = dx - ox, dy - oy
+        if 0 <= vx < vp["width"] and 0 <= vy < vp["height"]:
+            return vx, vy
+        return None
 
     # -- pyautogui lane -------------------------------------------------------
     @staticmethod
@@ -208,21 +257,20 @@ class Hands:
     # -- individual actions ----------------------------------------------------
     def click(self, x: int, y: int) -> dict:
         fx, fy = _clamp(x, FRAME_W), _clamp(y, FRAME_H)
+        dx, dy = self._to_display(fx, fy)
         page = self._get_page()
         if page is not None:
             try:
-                # Scale frame coords onto the page viewport (browser assumed
-                # to fill the captured desktop area).
-                vp = page.viewport_size or {"width": FRAME_W,
-                                          "height": FRAME_H}
-                vx = int(fx * vp["width"] / FRAME_W)
-                vy = int(fy * vp["height"] / FRAME_H)
-                page.mouse.move(vx, vy, steps=random.randint(10, 25))
-                page.mouse.click(vx, vy)
-                return {"ok": True, "via": "playwright", "at": [vx, vy]}
+                vp = self._to_viewport(page, dx, dy)
+                if vp is not None:
+                    page.mouse.move(vp[0], vp[1],
+                                    steps=random.randint(10, 25))
+                    page.mouse.click(vp[0], vp[1])
+                    return {"ok": True, "via": "playwright", "at": list(vp)}
+                # point is outside page content (browser chrome, desktop) —
+                # desktop input lands it regardless.
             except Exception:
                 self._page = None  # fall through to desktop input
-        dx, dy = self._to_display(fx, fy)
         if HAS_PYAUTOGUI:
             self._pg_move(dx, dy)
             time.sleep(random.uniform(0.05, 0.15))

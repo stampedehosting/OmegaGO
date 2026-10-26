@@ -38,6 +38,11 @@ LIVEKIT_TOKEN = os.environ.get("LIVEKIT_TOKEN", "")
 IDENTITY = os.environ.get("LIVEKIT_IDENTITY", f"agent{IDX:03d}")
 EYES_URL = os.environ.get("EYES_URL",
                           f"http://127.0.0.1:{8700 + IDX}").rstrip("/")
+AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "")
+
+
+def _headers() -> dict:
+    return {"Authorization": f"Bearer {AGENT_TOKEN}"} if AGENT_TOKEN else {}
 PUBLISH_FPS = float(os.environ.get("LIVEKIT_FPS", "2"))  # screen share is slow-mo
 WIDTH = int(os.environ.get("EYES_WIDTH", "1024"))
 HEIGHT = int(os.environ.get("EYES_HEIGHT", "768"))
@@ -45,7 +50,7 @@ HEIGHT = int(os.environ.get("EYES_HEIGHT", "768"))
 
 def _fetch_frame_jpeg() -> bytes | None:
     try:
-        r = requests.get(f"{EYES_URL}/frame", timeout=10)
+        r = requests.get(f"{EYES_URL}/frame", headers=_headers(), timeout=10)
         if r.ok:
             return r.content
     except Exception:

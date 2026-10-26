@@ -156,6 +156,7 @@ class ScreenDiffWatcher:
                                 "scale_x": sx, "scale_y": sy,
                             }
                             frame = _fit(raw)
+                            self.last_error = None  # healthy again
                         except Exception as exc:
                             print(f"[eyes] grab failed: {exc}", flush=True)
                             self.last_error = str(exc)
