@@ -55,9 +55,11 @@ npm install                    # installs pinned wrangler
 # create the R2 bucket once
 npx wrangler r2 bucket create visual-limbs-assets
 
-# secrets
+# secrets — EDGE_AUTH_TOKEN is required: without it (and without
+# EDGE_OPEN=true) /token and /mesh/* return 503
 npx wrangler secret put LIVEKIT_API_KEY
 npx wrangler secret put LIVEKIT_API_SECRET
+npx wrangler secret put EDGE_AUTH_TOKEN
 
 # edit [vars]: CONTABO_URL, NODES_JSON, LIVEKIT_URL, and pick a route style
 npx wrangler deploy
