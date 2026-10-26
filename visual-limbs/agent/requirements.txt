@@ -1,0 +1,12 @@
+# visual-limbs agent runtime — pinned minimal deps.
+# Core (eyes + clients):
+mss==10.0.0
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+requests==2.31.0
+# hands (Playwright lane — needs `playwright install chromium` once):
+playwright==1.40.0
+# Optional — hands.py degrades to playwright/xdotool without it:
+pyautogui==0.9.54
+# Optional — livekit_participant.py no-ops cleanly without it:
+livekit==1.0.25
