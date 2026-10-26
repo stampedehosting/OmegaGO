@@ -57,11 +57,15 @@ function handleHealth(request) {
 
 async function handleToken(request, env, url) {
   if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405);
+  if (!authorized(request, env, url)) return json({ error: 'unauthorized' }, 401);
 
   const room = url.searchParams.get('room');
   const agent = url.searchParams.get('agent');
   if (!room || !agent) {
     return json({ error: 'bad_request', message: 'required query params: room, agent' }, 400);
+  }
+  if (env.ROOM_PREFIX && !room.startsWith(env.ROOM_PREFIX)) {
+    return json({ error: 'forbidden', message: 'room not permitted' }, 403);
   }
   if (!env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
     return json({ error: 'missing_secrets', message: 'LIVEKIT_API_KEY / LIVEKIT_API_SECRET not configured' }, 503);
@@ -99,6 +103,8 @@ async function handleToken(request, env, url) {
 // ---------- /mesh/* ----------
 
 async function handleMesh(request, env, url) {
+  if (!authorized(request, env, url)) return json({ error: 'unauthorized' }, 401);
+
   const node = await pickNode(env.NODES_JSON, env.CONTABO_URL, {
     timeoutMs: num(env.PROBE_TIMEOUT_MS, 1500),
     cacheMs: num(env.PROBE_CACHE_MS, 10000),
@@ -111,10 +117,11 @@ async function handleMesh(request, env, url) {
   target.pathname = joinPath(target.pathname, suffix === '' ? '/' : suffix);
   target.search = url.search;
 
+  const wantsWebSocket = (request.headers.get('upgrade') || '').toLowerCase() === 'websocket';
   const headers = new Headers(request.headers);
-  for (const h of ['host', 'content-length', 'connection', 'cdn-loop', 'cf-worker', 'cf-ew-via', 'cf-ray', 'cf-visitor', 'cf-connecting-ip', 'x-forwarded-proto', 'x-real-ip']) {
-    headers.delete(h);
-  }
+  const strip = ['host', 'content-length', 'cdn-loop', 'cf-worker', 'cf-ew-via', 'cf-ray', 'cf-visitor', 'cf-connecting-ip', 'x-forwarded-proto', 'x-real-ip'];
+  if (!wantsWebSocket) strip.push('connection', 'upgrade');
+  for (const h of strip) headers.delete(h);
   const clientIp = request.headers.get('cf-connecting-ip');
   if (clientIp) headers.set('x-forwarded-for', clientIp);
   headers.set('x-mesh-edge', 'visual-limbs-edge');
@@ -126,6 +133,15 @@ async function handleMesh(request, env, url) {
   }
 
   const upstream = await fetch(new Request(target.toString(), init));
+
+  // WebSocket upgrade: the fetched response carries a webSocket handle and
+  // status 101, which the Response constructor cannot rebuild — pass it on.
+  if (upstream.webSocket) {
+    const wsHeaders = new Headers();
+    wsHeaders.set('x-mesh-node', node.name);
+    return new Response(null, { status: 101, webSocket: upstream.webSocket, headers: wsHeaders });
+  }
+
   const resHeaders = new Headers(upstream.headers);
   resHeaders.set('x-mesh-node', node.name);
   if (node.latencyMs != null) resHeaders.set('x-mesh-latency-ms', String(node.latencyMs));
@@ -179,7 +195,15 @@ async function handleAssets(request, env, url) {
       const end = m[2] === '' ? size - 1 : Math.min(parseInt(m[2], 10), size - 1);
       length = end - offset + 1;
     }
-    range = { offset: offset, length: length, total: size };
+    // Reversed (bytes=10-5) or empty (bytes=-0) ranges are unsatisfiable.
+    if (!Number.isFinite(length) || length <= 0) {
+      return new Response(null, { status: 416, headers: { 'content-range': 'bytes */' + size } });
+    }
+    // If-Range: serve the partial only if the client's validator still matches.
+    const ifRange = (request.headers.get('if-range') || '').trim();
+    if (!ifRange || ifRangeSatisfied(ifRange, meta)) {
+      range = { offset: offset, length: length, total: size };
+    }
   }
 
   const obj = await env.ASSETS.get(key, {
@@ -188,9 +212,11 @@ async function handleAssets(request, env, url) {
   });
   if (!obj) return json({ error: 'not_found', key: key }, 404);
 
-  // Conditional request failed (If-None-Match / If-Modified-Since): R2 returns no body.
+  // Condition failed: R2 returns the object without a body.
+  // If-Match / If-Unmodified-Since failures are 412; revalidation failures are 304.
   if (obj.body === undefined) {
-    return new Response(null, { status: 304, headers: { etag: obj.httpEtag, 'accept-ranges': 'bytes' } });
+    const status = request.headers.get('if-match') || request.headers.get('if-unmodified-since') ? 412 : 304;
+    return new Response(null, { status: status, headers: { etag: obj.httpEtag, 'accept-ranges': 'bytes' } });
   }
 
   const headers = new Headers();
@@ -226,6 +252,26 @@ function cors(res) {
   headers.set('access-control-allow-headers', 'authorization, content-type, range, x-requested-with');
   headers.set('access-control-expose-headers', 'content-range, content-length, etag, x-mesh-node, x-mesh-latency-ms');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: headers });
+}
+
+// EDGE_AUTH_TOKEN unset -> open edge (dev). When set, requires
+// `Authorization: Bearer <token>` or `?access_token=<token>` (query form
+// exists for browser WebSocket clients, which cannot set headers).
+function authorized(request, env, url) {
+  if (!env.EDGE_AUTH_TOKEN) return true;
+  if (request.headers.get('authorization') === 'Bearer ' + env.EDGE_AUTH_TOKEN) return true;
+  return url.searchParams.get('access_token') === env.EDGE_AUTH_TOKEN;
+}
+
+// If-Range is either an etag or an HTTP-date; satisfied means the client's
+// saved version is still current, so a 206 is safe.
+function ifRangeSatisfied(ifRange, meta) {
+  if (ifRange.charAt(0) === '"' || ifRange.slice(0, 2) === 'W/') {
+    return meta.httpEtag === ifRange;
+  }
+  const t = Date.parse(ifRange);
+  if (!Number.isFinite(t) || !meta.uploaded) return false;
+  return new Date(meta.uploaded).getTime() <= t;
 }
 
 function num(v, dflt) {

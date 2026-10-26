@@ -13,6 +13,10 @@ Single Worker that fronts the visual-limbs agent mesh from Cloudflare's edge.
 
 CORS is open (`*`) — the token and asset endpoints are meant to be called from browser agents.
 
+`/mesh/*` also proxies WebSocket upgrades: a client `Upgrade: websocket` request is forwarded (LiveKit, agent control channels), and the upstream 101 is passed through intact.
+
+**Hardening before production:** set `EDGE_AUTH_TOKEN` (the proxy and token mint are open without it), optionally set `ROOM_PREFIX`, and consider a Cloudflare Rate Limiting rule on `/token` to cap token issuance per IP.
+
 ## Required secrets, vars and bindings
 
 **Secrets** (`wrangler secret put <NAME>` — never commit values):
@@ -21,6 +25,7 @@ CORS is open (`*`) — the token and asset endpoints are meant to be called from
 |---|---|
 | `LIVEKIT_API_KEY` | `iss` of minted LiveKit tokens |
 | `LIVEKIT_API_SECRET` | HS256 signing key for LiveKit tokens |
+| `EDGE_AUTH_TOKEN` | **Recommended in production.** When set, `/token` and `/mesh/*` require `Authorization: Bearer <token>` or `?access_token=<token>` (the query form exists for browser WebSocket clients, which cannot set headers). Unset = open edge, dev only. |
 
 **Vars** (`[vars]` in `wrangler.toml`):
 
@@ -32,6 +37,7 @@ CORS is open (`*`) — the token and asset endpoints are meant to be called from
 | `PROBE_TIMEOUT_MS` | `1500` | Per-node probe timeout. |
 | `PROBE_CACHE_MS` | `10000` | How long an isolate reuses its winner before re-probing. Set `0` to probe every request. |
 | `LIVEKIT_URL` | `""` | WebSocket URL echoed in `/token` responses, e.g. `wss://rtc.p2pdojo.com` (LiveKit `:7880`). |
+| `ROOM_PREFIX` | `""` | Optional: only mint tokens for rooms with this prefix (e.g. `mesh-`). |
 
 **Bindings** (`wrangler.toml`):
 

@@ -35,7 +35,13 @@ PROBE_CACHE_MS = "10000"
 # Advertised in /token responses so clients know where to dial RTC.
 # e.g. "wss://rtc.p2pdojo.com" (LiveKit :7880 HTTP/WS, :7881 RTC, UDP 50000-60000, SIP :5060)
 LIVEKIT_URL = ""
+# Optional: restrict minted tokens to rooms with this prefix (e.g. "mesh-").
+ROOM_PREFIX = ""
 
 # --- Secrets (never commit values; set via `wrangler secret put`) ---
 # LIVEKIT_API_KEY
 # LIVEKIT_API_SECRET
+# EDGE_AUTH_TOKEN  -> recommended for production: requires
+#   `Authorization: Bearer <token>` or `?access_token=<token>` on /token and
+#   /mesh/*. Unset = open edge (dev only). Without it, anyone can mint LiveKit
+#   tokens or proxy into the control plane.
