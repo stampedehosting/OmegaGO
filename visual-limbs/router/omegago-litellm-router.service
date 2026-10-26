@@ -1,0 +1,26 @@
+[Unit]
+Description=OmegaGO visual-limbs LiteLLM router (master model gateway)
+Documentation=https://docs.litellm.ai/docs/proxy/quick_start
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omegago
+Group=omegago
+WorkingDirectory=/opt/omegago/visual-limbs/router
+EnvironmentFile=-/etc/omegago/router.env
+ExecStart=/opt/omegago/visual-limbs/router/.venv/bin/litellm \
+    --config /opt/omegago/visual-limbs/router/litellm_config.yaml \
+    --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+# Hardening: secrets come from router.env only; the unit sees no key material.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

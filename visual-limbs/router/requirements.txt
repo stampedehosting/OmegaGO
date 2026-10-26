@@ -1,0 +1,7 @@
+# visual-limbs/router — pinned deps.
+# litellm[proxy] 1.106.x requires fastapi>=0.136.3, uvicorn>=0.33, httpx>=0.28;
+# pins below are its minimums so a fresh venv resolves deterministically.
+litellm[proxy]==1.106.4
+fastapi==0.136.3
+uvicorn[standard]==0.33.0
+httpx[http2]==0.28.1

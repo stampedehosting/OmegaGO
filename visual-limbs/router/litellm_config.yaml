@@ -1,0 +1,144 @@
+# visual-limbs/router — master LiteLLM gateway for the OmegaGO agent mesh.
+#
+# 3-lane waterfall per model:
+#   lane 1: brain card local backends (vLLM / llama-server, OpenAI-compatible)
+#   lane 2: OpenRouter overflow (paid, only when lane 1 errors or saturates)
+#   lane 3: parked media fleet (cold/spare GPU hosts, endpoints via env vars)
+#
+# A request to public name "qwen-coder" is tried on :8081 first; on error,
+# timeout (queue saturation) or cooldown it falls back to the OpenRouter
+# equivalent, then to the parked fleet endpoint.
+
+model_list:
+  # ---------- Lane 1: brain card (96GB PRO 6000), localhost ----------
+  - model_name: qwen-coder
+    litellm_params:
+      model: openai/qwen-coder-32b
+      api_base: http://127.0.0.1:8081/v1
+      api_key: "EMPTY" # local backend ignores bearer; set LOCAL_LLM_API_KEY if you run --api-key
+      timeout: 90        # queue wait + first token budget; trip -> fallback
+      stream_timeout: 300
+    model_info:
+      mode: chat
+      description: "brain card :8081, 32 parallel slots"
+
+  - model_name: gemma
+    litellm_params:
+      model: openai/gemma-31b
+      api_base: http://127.0.0.1:8082/v1
+      api_key: "EMPTY"
+      timeout: 90
+      stream_timeout: 300
+    model_info:
+      mode: chat
+      description: "brain card :8082, 48 parallel slots"
+
+  - model_name: qwen-vl
+    litellm_params:
+      model: openai/qwen2.5-vl-32b
+      api_base: http://127.0.0.1:8083/v1
+      api_key: "EMPTY"
+      timeout: 120        # vision prompts are heavier; still trips on saturation
+      stream_timeout: 300
+    model_info:
+      mode: chat
+      description: "brain card :8083, 24 parallel slots (vision)"
+
+  - model_name: bge-m3
+    litellm_params:
+      model: openai/bge-m3
+      api_base: http://127.0.0.1:8084/v1
+      api_key: "EMPTY"
+      timeout: 60
+    model_info:
+      mode: embedding
+      description: "brain card :8084, embeddings"
+
+  # ---------- Lane 2: OpenRouter overflow ----------
+  - model_name: qwen-coder-openrouter
+    litellm_params:
+      model: openrouter/qwen/qwen3-coder
+      api_key: os.environ/OPENROUTER_API_KEY
+      timeout: 300
+    model_info:
+      mode: chat
+
+  - model_name: gemma-openrouter
+    litellm_params:
+      model: openrouter/google/gemma-3-27b-it
+      api_key: os.environ/OPENROUTER_API_KEY
+      timeout: 300
+    model_info:
+      mode: chat
+
+  - model_name: qwen-vl-openrouter
+    litellm_params:
+      model: openrouter/qwen/qwen2.5-vl-32b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+      timeout: 300
+    model_info:
+      mode: chat
+
+  # OpenRouter exposes no embeddings API -> bge-m3 has no lane 2; its
+  # overflow goes straight to lane 3 (bge-m3-fleet).
+
+  # ---------- Lane 3: parked media fleet ----------
+  # Endpoints are env-provided so fleet hosts can rotate without a config
+  # edit. If a var is unset the deployment simply errors and ends the chain.
+  - model_name: qwen-coder-fleet
+    litellm_params:
+      model: openai/qwen-coder-32b
+      api_base: os.environ/FLEET_QWEN_CODER_URL   # e.g. http://media-node-1:8081/v1
+      api_key: "EMPTY"
+      timeout: 300
+    model_info:
+      mode: chat
+
+  - model_name: gemma-fleet
+    litellm_params:
+      model: openai/gemma-31b
+      api_base: os.environ/FLEET_GEMMA_URL
+      api_key: "EMPTY"
+      timeout: 300
+    model_info:
+      mode: chat
+
+  - model_name: qwen-vl-fleet
+    litellm_params:
+      model: openai/qwen2.5-vl-32b
+      api_base: os.environ/FLEET_QWEN_VL_URL
+      api_key: "EMPTY"
+      timeout: 300
+    model_info:
+      mode: chat
+
+  - model_name: bge-m3-fleet
+    litellm_params:
+      model: openai/bge-m3
+      api_base: os.environ/FLEET_BGE_M3_URL
+      api_key: "EMPTY"
+      timeout: 120
+    model_info:
+      mode: embedding
+
+litellm_settings:
+  drop_params: true            # don't 400 on params a backend doesn't know
+  request_timeout: 600         # absolute ceiling per request (seconds)
+  num_retries: 2               # retries on the SAME deployment before fallback
+  timeout: 600
+  fallbacks:
+    - qwen-coder: ["qwen-coder-openrouter", "qwen-coder-fleet"]
+    - gemma: ["gemma-openrouter", "gemma-fleet"]
+    - qwen-vl: ["qwen-vl-openrouter", "qwen-vl-fleet"]
+    - bge-m3: ["bge-m3-fleet"]
+
+router_settings:
+  routing_strategy: simple-shuffle   # single deployment per public name; keeps ordering deterministic
+  allowed_fails: 3                   # consecutive errors before a deployment is cooled down
+  cooldown_time: 60                  # seconds a failed deployment sits out
+  retry_after: 0
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY   # required: admin + key management auth
+  # database_url is read from the DATABASE_URL env var automatically.
+  # Set it (Postgres) before using issue_key.sh — /key/generate needs the DB.
