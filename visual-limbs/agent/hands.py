@@ -217,11 +217,18 @@ class Hands:
         area. Browser chrome/toolbar sit between the frame's top edge and the
         page, so raw scaling is wrong — subtract the window's content origin.
         """
+        session = None
         try:
             session = page.context.new_cdp_session(page)
             bounds = session.send("Browser.getWindowForTarget")["bounds"]
         except Exception:
             return None
+        finally:
+            if session is not None:
+                try:
+                    session.detach()
+                except Exception:
+                    pass
         vp = page.viewport_size
         if not vp:
             return None
