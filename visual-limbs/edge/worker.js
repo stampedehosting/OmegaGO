@@ -118,7 +118,9 @@ async function handleMesh(request, env, url) {
   const suffix = url.pathname.replace(/^\/mesh/, '');
   target.pathname = joinPath(target.pathname, suffix === '' ? '/' : suffix);
   const fwdParams = new URLSearchParams(url.search);
-  fwdParams.delete('access_token'); // never forward the edge credential upstream
+  // Strip only the EDGE credential. `access_token` is deliberately kept:
+  // upstreams like LiveKit carry their own session JWT in that param.
+  fwdParams.delete('edge_token');
   target.search = fwdParams.toString();
 
   const wantsWebSocket = (request.headers.get('upgrade') || '').toLowerCase() === 'websocket';
@@ -129,6 +131,11 @@ async function handleMesh(request, env, url) {
   const clientIp = request.headers.get('cf-connecting-ip');
   if (clientIp) headers.set('x-forwarded-for', clientIp);
   headers.set('x-mesh-edge', 'visual-limbs-edge');
+  // The edge Bearer credential must not leak to control nodes; a different
+  // Authorization value is the caller's own upstream credential and passes.
+  if (env.EDGE_AUTH_TOKEN && request.headers.get('authorization') === 'Bearer ' + env.EDGE_AUTH_TOKEN) {
+    headers.delete('authorization');
+  }
 
   const init = { method: request.method, headers: headers, redirect: 'manual' };
   if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -260,15 +267,18 @@ function cors(res) {
 }
 
 // Auth gate for /token and /mesh/*. EDGE_AUTH_TOKEN set -> require
-// `Authorization: Bearer <token>` or `?access_token=<token>` (query form
+// `Authorization: Bearer <token>` or `?edge_token=<token>` (query form
 // exists for browser WebSocket clients, which cannot set headers).
+// `edge_token` is distinct from `access_token`, which upstreams (e.g.
+// LiveKit) use for their own session credentials and which is never
+// stripped before proxying.
 // Unset -> closed by default; EDGE_OPEN=true (var) opts into open dev mode.
 function authGate(request, env, url) {
   if (!env.EDGE_AUTH_TOKEN) {
     return env.EDGE_OPEN === 'true' ? 'ok' : 'edge_auth_not_configured';
   }
   if (request.headers.get('authorization') === 'Bearer ' + env.EDGE_AUTH_TOKEN) return 'ok';
-  return url.searchParams.get('access_token') === env.EDGE_AUTH_TOKEN ? 'ok' : 'unauthorized';
+  return url.searchParams.get('edge_token') === env.EDGE_AUTH_TOKEN ? 'ok' : 'unauthorized';
 }
 
 // R2 omits the body when a conditional read fails. The positive

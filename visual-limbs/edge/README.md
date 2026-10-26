@@ -25,7 +25,7 @@ CORS is open (`*`) — the token and asset endpoints are meant to be called from
 |---|---|
 | `LIVEKIT_API_KEY` | `iss` of minted LiveKit tokens |
 | `LIVEKIT_API_SECRET` | HS256 signing key for LiveKit tokens |
-| `EDGE_AUTH_TOKEN` | **Required in production.** When set, `/token` and `/mesh/*` require `Authorization: Bearer <token>` or `?access_token=<token>` (the query form exists for browser WebSocket clients, which cannot set headers — it is stripped before proxying so the credential never reaches a control node). Unset + `EDGE_OPEN=false` → endpoints closed (503). |
+| `EDGE_AUTH_TOKEN` | **Required in production.** When set, `/token` and `/mesh/*` require `Authorization: Bearer <token>` or `?edge_token=<token>` (the query form exists for browser WebSocket clients, which cannot set headers — `edge_token` is stripped before proxying so the credential never reaches a control node; a matching Bearer header is dropped from forwarded headers too. Upstream credentials like LiveKit's `access_token` pass through untouched). Unset + `EDGE_OPEN=false` → endpoints closed (503). |
 
 **Vars** (`[vars]` in `wrangler.toml`):
 

@@ -19,7 +19,7 @@ Worker-side (see `edge/README.md` for the full contract):
 | `LIVEKIT_API_KEY` | wrangler secret | LiveKit token issuer |
 | `LIVEKIT_API_SECRET` | wrangler secret | LiveKit token signing (HS256) |
 | `LIVEKIT_URL` | var | `wss://` URL echoed to clients (LiveKit `:7880`) |
-| `EDGE_AUTH_TOKEN` | wrangler secret | Bearer/`?access_token=` gate on `/token` + `/mesh/*` (closed by default) |
+| `EDGE_AUTH_TOKEN` | wrangler secret | Bearer/`?edge_token=` gate on `/token` + `/mesh/*` (closed by default) |
 | `EDGE_OPEN` | var | dev-only opt-in to run unauthenticated (`"true"`) |
 | `ROOM_PREFIX` | var | optional room allowlist prefix for `/token` |
 | `CONTABO_URL` | var | fallback control node for `/mesh/*` |

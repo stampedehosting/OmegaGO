@@ -45,6 +45,8 @@ EDGE_OPEN = "false"
 # LIVEKIT_API_KEY
 # LIVEKIT_API_SECRET
 # EDGE_AUTH_TOKEN  -> required in production: /token and /mesh/* then need
-#   `Authorization: Bearer <token>` or `?access_token=<token>`. Unset + no
-#   EDGE_OPEN=true -> endpoints closed (503). The access_token query param is
-#   stripped before proxying so the credential never reaches control nodes.
+#   `Authorization: Bearer <token>` or `?edge_token=<token>`. Unset + no
+#   EDGE_OPEN=true -> endpoints closed (503). The edge_token query param and a
+#   matching Bearer header are stripped before proxying so the credential
+#   never reaches control nodes; upstream `access_token` (e.g. LiveKit JWTs)
+#   is preserved.
