@@ -1,0 +1,15 @@
+{
+  "name": "visual-limbs-edge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cloudflare Worker edge router for the P2P/OmegaGO visual-limbs agent mesh",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  }
+}
