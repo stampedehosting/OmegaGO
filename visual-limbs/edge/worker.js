@@ -122,6 +122,7 @@ async function handleMesh(request, env, url) {
   const init = { method: request.method, headers: headers, redirect: 'manual' };
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     init.body = request.body;
+    init.duplex = 'half'; // required when forwarding a streamed request body
   }
 
   const upstream = await fetch(new Request(target.toString(), init));
@@ -228,8 +229,9 @@ function cors(res) {
 }
 
 function num(v, dflt) {
+  if (v === undefined || v === null || v === '') return dflt;
   const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : dflt;
+  return Number.isFinite(n) && n >= 0 ? n : dflt;
 }
 
 function joinPath(base, suffix) {
