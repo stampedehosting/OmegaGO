@@ -57,7 +57,8 @@ function handleHealth(request) {
 
 async function handleToken(request, env, url) {
   if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405);
-  if (!authorized(request, env, url)) return json({ error: 'unauthorized' }, 401);
+  const gate = authGate(request, env, url);
+  if (gate !== 'ok') return json({ error: gate }, gate === 'edge_auth_not_configured' ? 503 : 401);
 
   const room = url.searchParams.get('room');
   const agent = url.searchParams.get('agent');
@@ -103,7 +104,8 @@ async function handleToken(request, env, url) {
 // ---------- /mesh/* ----------
 
 async function handleMesh(request, env, url) {
-  if (!authorized(request, env, url)) return json({ error: 'unauthorized' }, 401);
+  const gate = authGate(request, env, url);
+  if (gate !== 'ok') return json({ error: gate }, gate === 'edge_auth_not_configured' ? 503 : 401);
 
   const node = await pickNode(env.NODES_JSON, env.CONTABO_URL, {
     timeoutMs: num(env.PROBE_TIMEOUT_MS, 1500),
@@ -115,7 +117,9 @@ async function handleMesh(request, env, url) {
   const target = new URL(node.url);
   const suffix = url.pathname.replace(/^\/mesh/, '');
   target.pathname = joinPath(target.pathname, suffix === '' ? '/' : suffix);
-  target.search = url.search;
+  const fwdParams = new URLSearchParams(url.search);
+  fwdParams.delete('access_token'); // never forward the edge credential upstream
+  target.search = fwdParams.toString();
 
   const wantsWebSocket = (request.headers.get('upgrade') || '').toLowerCase() === 'websocket';
   const headers = new Headers(request.headers);
@@ -137,7 +141,7 @@ async function handleMesh(request, env, url) {
   // WebSocket upgrade: the fetched response carries a webSocket handle and
   // status 101, which the Response constructor cannot rebuild — pass it on.
   if (upstream.webSocket) {
-    const wsHeaders = new Headers();
+    const wsHeaders = new Headers(upstream.headers); // keep Sec-WebSocket-Protocol, Set-Cookie, etc.
     wsHeaders.set('x-mesh-node', node.name);
     return new Response(null, { status: 101, webSocket: upstream.webSocket, headers: wsHeaders });
   }
@@ -212,10 +216,11 @@ async function handleAssets(request, env, url) {
   });
   if (!obj) return json({ error: 'not_found', key: key }, 404);
 
-  // Condition failed: R2 returns the object without a body.
-  // If-Match / If-Unmodified-Since failures are 412; revalidation failures are 304.
+  // Condition failed: R2 returns the object without a body. Attribute the
+  // failure per RFC 7232 precedence — a passing If-Match must not mask a
+  // failing If-None-Match (412 vs 304).
   if (obj.body === undefined) {
-    const status = request.headers.get('if-match') || request.headers.get('if-unmodified-since') ? 412 : 304;
+    const status = conditionalStatus(request, obj);
     return new Response(null, { status: status, headers: { etag: obj.httpEtag, 'accept-ranges': 'bytes' } });
   }
 
@@ -254,13 +259,43 @@ function cors(res) {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: headers });
 }
 
-// EDGE_AUTH_TOKEN unset -> open edge (dev). When set, requires
+// Auth gate for /token and /mesh/*. EDGE_AUTH_TOKEN set -> require
 // `Authorization: Bearer <token>` or `?access_token=<token>` (query form
 // exists for browser WebSocket clients, which cannot set headers).
-function authorized(request, env, url) {
-  if (!env.EDGE_AUTH_TOKEN) return true;
-  if (request.headers.get('authorization') === 'Bearer ' + env.EDGE_AUTH_TOKEN) return true;
-  return url.searchParams.get('access_token') === env.EDGE_AUTH_TOKEN;
+// Unset -> closed by default; EDGE_OPEN=true (var) opts into open dev mode.
+function authGate(request, env, url) {
+  if (!env.EDGE_AUTH_TOKEN) {
+    return env.EDGE_OPEN === 'true' ? 'ok' : 'edge_auth_not_configured';
+  }
+  if (request.headers.get('authorization') === 'Bearer ' + env.EDGE_AUTH_TOKEN) return 'ok';
+  return url.searchParams.get('access_token') === env.EDGE_AUTH_TOKEN ? 'ok' : 'unauthorized';
+}
+
+// R2 omits the body when a conditional read fails. The positive
+// preconditions are checked first (If-Match strong, then
+// If-Unmodified-Since); if they pass, the failure is a revalidation
+// condition and the answer is 304 — this handler only allows GET/HEAD.
+function conditionalStatus(request, meta) {
+  const h = request.headers;
+  const ifMatch = h.get('if-match');
+  if (ifMatch && !etagMatches(ifMatch, meta.httpEtag, false)) return 412;
+  const ius = h.get('if-unmodified-since');
+  if (ius && meta.uploaded) {
+    const t = Date.parse(ius);
+    if (Number.isFinite(t) && new Date(meta.uploaded).getTime() > t) return 412;
+  }
+  return 304;
+}
+
+// If-Match uses strong comparison, If-None-Match weak; `*` matches anything.
+function etagMatches(headerValue, httpEtag, weak) {
+  const strip = (t) => (t.slice(0, 2) === 'W/' ? t.slice(2) : t);
+  const target = weak ? strip(String(httpEtag || '')) : String(httpEtag || '');
+  return headerValue.split(',').some((raw) => {
+    const v = raw.trim();
+    if (v === '*') return true;
+    return (weak ? strip(v) : v) === target;
+  });
 }
 
 // If-Range is either an etag or an HTTP-date; satisfied means the client's

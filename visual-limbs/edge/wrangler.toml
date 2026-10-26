@@ -37,11 +37,14 @@ PROBE_CACHE_MS = "10000"
 LIVEKIT_URL = ""
 # Optional: restrict minted tokens to rooms with this prefix (e.g. "mesh-").
 ROOM_PREFIX = ""
+# DEV ONLY: explicit opt-in to run /token and /mesh/* unauthenticated.
+# Without EDGE_AUTH_TOKEN and without this flag they return 503.
+EDGE_OPEN = "false"
 
 # --- Secrets (never commit values; set via `wrangler secret put`) ---
 # LIVEKIT_API_KEY
 # LIVEKIT_API_SECRET
-# EDGE_AUTH_TOKEN  -> recommended for production: requires
-#   `Authorization: Bearer <token>` or `?access_token=<token>` on /token and
-#   /mesh/*. Unset = open edge (dev only). Without it, anyone can mint LiveKit
-#   tokens or proxy into the control plane.
+# EDGE_AUTH_TOKEN  -> required in production: /token and /mesh/* then need
+#   `Authorization: Bearer <token>` or `?access_token=<token>`. Unset + no
+#   EDGE_OPEN=true -> endpoints closed (503). The access_token query param is
+#   stripped before proxying so the credential never reaches control nodes.

@@ -15,7 +15,7 @@ CORS is open (`*`) — the token and asset endpoints are meant to be called from
 
 `/mesh/*` also proxies WebSocket upgrades: a client `Upgrade: websocket` request is forwarded (LiveKit, agent control channels), and the upstream 101 is passed through intact.
 
-**Hardening before production:** set `EDGE_AUTH_TOKEN` (the proxy and token mint are open without it), optionally set `ROOM_PREFIX`, and consider a Cloudflare Rate Limiting rule on `/token` to cap token issuance per IP.
+**Hardening before production:** set `EDGE_AUTH_TOKEN` (closed by default — `EDGE_OPEN=true` is the dev escape hatch), optionally set `ROOM_PREFIX`, and consider a Cloudflare Rate Limiting rule on `/token` to cap token issuance per IP.
 
 ## Required secrets, vars and bindings
 
@@ -25,7 +25,7 @@ CORS is open (`*`) — the token and asset endpoints are meant to be called from
 |---|---|
 | `LIVEKIT_API_KEY` | `iss` of minted LiveKit tokens |
 | `LIVEKIT_API_SECRET` | HS256 signing key for LiveKit tokens |
-| `EDGE_AUTH_TOKEN` | **Recommended in production.** When set, `/token` and `/mesh/*` require `Authorization: Bearer <token>` or `?access_token=<token>` (the query form exists for browser WebSocket clients, which cannot set headers). Unset = open edge, dev only. |
+| `EDGE_AUTH_TOKEN` | **Required in production.** When set, `/token` and `/mesh/*` require `Authorization: Bearer <token>` or `?access_token=<token>` (the query form exists for browser WebSocket clients, which cannot set headers — it is stripped before proxying so the credential never reaches a control node). Unset + `EDGE_OPEN=false` → endpoints closed (503). |
 
 **Vars** (`[vars]` in `wrangler.toml`):
 
@@ -38,6 +38,7 @@ CORS is open (`*`) — the token and asset endpoints are meant to be called from
 | `PROBE_CACHE_MS` | `10000` | How long an isolate reuses its winner before re-probing. Set `0` to probe every request. |
 | `LIVEKIT_URL` | `""` | WebSocket URL echoed in `/token` responses, e.g. `wss://rtc.p2pdojo.com` (LiveKit `:7880`). |
 | `ROOM_PREFIX` | `""` | Optional: only mint tokens for rooms with this prefix (e.g. `mesh-`). |
+| `EDGE_OPEN` | `"false"` | DEV ONLY: explicit opt-in to run `/token` and `/mesh/*` unauthenticated. Without it and without `EDGE_AUTH_TOKEN` they return 503. |
 
 **Bindings** (`wrangler.toml`):
 
@@ -89,5 +90,7 @@ curl 'http://127.0.0.1:8787/health'
 curl 'http://127.0.0.1:8787/token?room=lab&agent=a1'
 ```
 
-In `wrangler dev`, secrets come from `.dev.vars` (gitignored — create it with
-`LIVEKIT_API_KEY=...` / `LIVEKIT_API_SECRET=...`), and R2 bindings are emulated locally.
+In `wrangler dev`, secrets and local overrides come from `.dev.vars` (gitignored
+— create it with `LIVEKIT_API_KEY=...` / `LIVEKIT_API_SECRET=...`, and either
+`EDGE_AUTH_TOKEN=...` or `EDGE_OPEN=true` so `/token` and `/mesh/*` answer),
+and R2 bindings are emulated locally.
