@@ -1,0 +1,21 @@
+[Unit]
+Description=OmegaGO visual-limbs router health/saturation endpoint
+After=network-online.target omegago-litellm-router.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omegago
+Group=omegago
+WorkingDirectory=/opt/omegago/visual-limbs/router
+EnvironmentFile=-/etc/omegago/router.env
+ExecStart=/opt/omegago/visual-limbs/router/.venv/bin/python router_health.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
