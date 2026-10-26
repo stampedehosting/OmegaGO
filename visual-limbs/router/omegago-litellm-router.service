@@ -9,10 +9,16 @@ Type=simple
 User=omegago
 Group=omegago
 WorkingDirectory=/opt/omegago/visual-limbs/router
+# Mesh-facing by default: agent desktops/workers reach the gateway over the
+# LAN. Every request still needs a valid virtual/master key — the bind is not
+# an auth boundary. Set ROUTER_HOST=127.0.0.1 in router.env to run
+# loopback-only (e.g. when everything goes through the Argon gateway :8090).
+Environment=ROUTER_HOST=0.0.0.0
+Environment=ROUTER_PORT=8000
 EnvironmentFile=-/etc/omegago/router.env
 ExecStart=/opt/omegago/visual-limbs/router/.venv/bin/litellm \
     --config /opt/omegago/visual-limbs/router/litellm_config.yaml \
-    --host 127.0.0.1 --port 8000
+    --host ${ROUTER_HOST} --port ${ROUTER_PORT}
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536

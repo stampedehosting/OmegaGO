@@ -46,8 +46,10 @@ FLEET_ENV = {
     "bge-m3": "FLEET_BGE_M3_URL",
 }
 
-VLLM_RUNNING = re.compile(r"^vllm:num_requests_running\s+([\d.]+)", re.M)
-VLLM_WAITING = re.compile(r"^vllm:num_requests_waiting\s+([\d.]+)", re.M)
+# Prometheus samples may carry labels: `vllm:num_requests_running{model_name="x"} 4.0`.
+# Sum across all samples so per-label series are aggregated; absent == unknown.
+VLLM_RUNNING = re.compile(r"^vllm:num_requests_running(?:\{[^}]*\})?\s+([\d.]+)", re.M)
+VLLM_WAITING = re.compile(r"^vllm:num_requests_waiting(?:\{[^}]*\})?\s+([\d.]+)", re.M)
 
 app = FastAPI(title="visual-limbs router health", version="1.0.0")
 
@@ -105,13 +107,15 @@ async def _probe(client: httpx.AsyncClient, name: str, spec: dict) -> dict:
     try:
         r = await client.get(f"{url}/metrics", timeout=PROBE_TIMEOUT)
         if r.status_code == 200:
-            running = VLLM_RUNNING.search(r.text)
-            waiting = VLLM_WAITING.search(r.text)
-            busy = int(float(running.group(1))) if running else 0
-            queue = int(float(waiting.group(1))) if waiting else 0
+            running = VLLM_RUNNING.findall(r.text)
+            waiting = VLLM_WAITING.findall(r.text)
+            busy = int(sum(float(v) for v in running)) if running else None
+            queue = int(sum(float(v) for v in waiting)) if waiting else None
             result.update(
-                reachable=True, probe="metrics", slots_busy=busy,
-                queue=queue, saturation=round(busy / spec["slots"], 3),
+                reachable=True, probe="metrics", slots_busy=busy, queue=queue,
+                saturation=(
+                    round(busy / spec["slots"], 3) if busy is not None else None
+                ),
             )
             return result
     except Exception:
@@ -134,15 +138,25 @@ def _lane_advice(backends: dict) -> dict:
     for name in DEFAULT_BACKENDS:
         local = backends.get(name, {})
         fleet = backends.get(f"{name}-fleet", {})
-        if local.get("reachable") and (local.get("saturation") or 0) < SATURATION_WARN:
-            lane = 1
+        sat = local.get("saturation")
+        if local.get("reachable"):
+            if sat is None:
+                # Live but /slots and /metrics gave no occupancy data — honest
+                # "unknown" rather than pretending the backend is empty.
+                advice[name] = {"lane": 1, "occupancy": "unknown"}
+            elif sat < SATURATION_WARN:
+                advice[name] = {"lane": 1, "occupancy": "measured"}
+            else:
+                # Still the entry lane, but calls will queue and spill
+                # to the next lane via timeout/fallback.
+                advice[name] = {"lane": 1, "occupancy": "saturated"}
         elif os.getenv("OPENROUTER_API_KEY") and name != "bge-m3":
-            lane = 2  # OpenRouter has no embeddings -> bge-m3 skips lane 2
+            # OpenRouter has no embeddings -> bge-m3 skips lane 2
+            advice[name] = {"lane": 2, "occupancy": None}
         elif fleet.get("reachable"):
-            lane = 3
+            advice[name] = {"lane": 3, "occupancy": None}
         else:
-            lane = None
-        advice[name] = lane
+            advice[name] = {"lane": None, "occupancy": None}
     return advice
 
 

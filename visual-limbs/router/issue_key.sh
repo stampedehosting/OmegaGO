@@ -33,9 +33,21 @@ command -v jq   >/dev/null || { echo "error: jq not found" >&2; exit 1; }
 
 AGENT_ID="${1:-}"
 shift || true
+
+# Agent keys may only ever be scoped to the public model names. The
+# -openrouter/-fleet deployments are router-internal: a key that could call
+# them directly would bypass the waterfall and incur paid OpenRouter charges.
+PUBLIC_MODELS=(qwen-coder gemma qwen-vl bge-m3)
 MODELS=("$@")
 if [[ ${#MODELS[@]} -eq 0 ]]; then
-  MODELS=(qwen-coder gemma qwen-vl bge-m3)
+  MODELS=("${PUBLIC_MODELS[@]}")
+else
+  for m in "${MODELS[@]}"; do
+    [[ " ${PUBLIC_MODELS[*]} " == *" $m "* ]] || {
+      echo "error: '$m' is not a public model (allowed: ${PUBLIC_MODELS[*]})" >&2
+      exit 1
+    }
+  done
 fi
 
 # Auto-number: next agentNNN after the highest alias already in keys.jsonl.
