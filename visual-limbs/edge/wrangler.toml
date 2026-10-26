@@ -1,0 +1,41 @@
+# visual-limbs edge router — wrangler config
+name = "visual-limbs-edge"
+main = "worker.js"
+compatibility_date = "2026-10-26"
+
+# --- Routes (pick ONE style; zone must exist in the CF account) ---
+# A) Custom domain (recommended): edge.p2pdojo.com serves all paths.
+routes = [
+  { pattern = "edge.p2pdojo.com", zone_name = "p2pdojo.com", custom_domain = true },
+]
+# B) Wildcard path routes on the zone:
+# routes = [
+#   { pattern = "*.p2pdojo.com/mesh/*",   zone_name = "p2pdojo.com" },
+#   { pattern = "*.p2pdojo.com/token",    zone_name = "p2pdojo.com" },
+#   { pattern = "*.p2pdojo.com/assets/*", zone_name = "p2pdojo.com" },
+#   { pattern = "*.p2pdojo.com/health",   zone_name = "p2pdojo.com" },
+# ]
+
+# --- R2 assets bucket (GET /assets/*, range-capable) ---
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "visual-limbs-assets"
+
+# --- Non-secret vars ---
+[vars]
+# Fallback / primary control node (Contabo). Used when NODES_JSON is empty
+# or every probe fails.
+CONTABO_URL = "https://control.p2pdojo.com"
+# name -> url map of candidate control nodes (or array of {name,url}).
+NODES_JSON = '{"contabo":"https://control.p2pdojo.com"}'
+# Probe tuning.
+PROBE_PATH = "/probe"
+PROBE_TIMEOUT_MS = "1500"
+PROBE_CACHE_MS = "10000"
+# Advertised in /token responses so clients know where to dial RTC.
+# e.g. "wss://rtc.p2pdojo.com" (LiveKit :7880 HTTP/WS, :7881 RTC, UDP 50000-60000, SIP :5060)
+LIVEKIT_URL = ""
+
+# --- Secrets (never commit values; set via `wrangler secret put`) ---
+# LIVEKIT_API_KEY
+# LIVEKIT_API_SECRET
