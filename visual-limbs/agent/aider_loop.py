@@ -21,14 +21,17 @@ Env:
   AIDER_TASK           initial instruction sent to aider on start
   ARCHITECT_MODEL      openrouter model id (default anthropic/claude-sonnet-4)
   OPENROUTER_API_KEY   required (env only — never hardcoded)
-  BRAIN_URL            editor model base URL (default http://127.0.0.1:8081/v1)
-  BRAIN_MODEL          editor model name (default qwen-coder)
+  AIDER_EDITOR_URL     editor model base URL (default http://127.0.0.1:8081/v1,
+                       i.e. the local qwen-coder lane)
+  AIDER_EDITOR_MODEL   editor model name (default qwen-coder)
+  BRAIN_API_KEY        bearer for the editor endpoint (default sk-local)
   CHROME_CDP_URL       agent chrome (default http://127.0.0.1:9200+N)
   AIDER_BIN            aider executable (default "aider")
   AIDER_IDLE_SECONDS   idle time before checking the app (default 20)
 """
 
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -48,8 +51,10 @@ APP_URL = os.environ.get("AIDER_APP_URL", "")
 TASK = os.environ.get("AIDER_TASK", "")
 ARCHITECT_MODEL = os.environ.get("ARCHITECT_MODEL",
                                  "anthropic/claude-sonnet-4")
-BRAIN_URL = os.environ.get("BRAIN_URL", "http://127.0.0.1:8081/v1")
-BRAIN_MODEL = os.environ.get("BRAIN_MODEL", "qwen-coder")
+# The aider editor lane is the local qwen-coder service — deliberately
+# separate from BRAIN_URL/BRAIN_MODEL, which point at the *vision* brain.
+EDITOR_URL = os.environ.get("AIDER_EDITOR_URL", "http://127.0.0.1:8081/v1")
+EDITOR_MODEL = os.environ.get("AIDER_EDITOR_MODEL", "qwen-coder")
 CDP_URL = os.environ.get("CHROME_CDP_URL", f"http://127.0.0.1:{9200 + IDX}")
 AIDER_BIN = os.environ.get("AIDER_BIN", "aider")
 IDLE_SECONDS = float(os.environ.get("AIDER_IDLE_SECONDS", "20"))
@@ -70,16 +75,18 @@ def aider_running() -> bool:
 
 
 def start_session() -> None:
+    # Every interpolated value goes through shlex.quote — env vars reach the
+    # tmux shell as literal data, never executable syntax.
     env = (
-        f"OPENROUTER_API_KEY='{os.environ.get('OPENROUTER_API_KEY', '')}' "
-        f"OPENAI_API_BASE='{BRAIN_URL}' "
-        f"OPENAI_API_KEY='{os.environ.get('BRAIN_API_KEY', 'sk-local')}'"
+        f"OPENROUTER_API_KEY={shlex.quote(os.environ.get('OPENROUTER_API_KEY', ''))} "
+        f"OPENAI_API_BASE={shlex.quote(EDITOR_URL)} "
+        f"OPENAI_API_KEY={shlex.quote(os.environ.get('BRAIN_API_KEY', 'sk-local'))}"
     )
     cmd = (
-        f"{env} {AIDER_BIN} --architect "
-        f"--model 'openrouter/{ARCHITECT_MODEL}' "
-        f"--editor-model 'openai/{BRAIN_MODEL}' "
-        f"--no-auto-commits --yes-always --dark-mode"
+        f"{env} {shlex.quote(AIDER_BIN)} --architect "
+        f"--model {shlex.quote('openrouter/' + ARCHITECT_MODEL)} "
+        f"--editor-model {shlex.quote('openai/' + EDITOR_MODEL)} "
+        "--no-auto-commits --yes-always --dark-mode"
     )
     tmux("new-session", "-d", "-s", SESSION, "-c", str(WORKDIR), cmd)
     print(f"[aider] started tmux session {SESSION} in {WORKDIR}", flush=True)

@@ -19,9 +19,9 @@ If the `livekit` package isn't installed the module still imports and
 """
 
 import asyncio
-import io
 import os
 import sys
+from urllib.parse import urlparse
 
 import requests
 
@@ -112,6 +112,12 @@ def main() -> int:
         print("[livekit] LIVEKIT_URL/LIVEKIT_TOKEN unset — nothing to join.",
               flush=True)
         return 0
+    if LIVEKIT_URL.startswith("ws://"):
+        host = urlparse(LIVEKIT_URL).hostname or ""
+        if host not in ("localhost", "127.0.0.1", "::1"):
+            print(f"[livekit] WARNING: ws://{host} sends the join token in "
+                  f"plaintext — use wss:// when the path isn't trusted.",
+                  flush=True)
     try:
         asyncio.run(run())
     except KeyboardInterrupt:

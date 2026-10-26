@@ -24,10 +24,10 @@ card.
 
 | File | Role |
 |---|---|
-| `agent/eyes.py` | mss screen-diff watcher on `$DISPLAY`; emits 1024x768 JPEGs only when pixels change. Serves `GET /frame` (latest JPEG), `GET /seq`, `GET /health`. |
+| `agent/eyes.py` | mss screen-diff watcher on `$DISPLAY`; emits 1024x768 JPEGs only when pixels change. Retries the display connection until X is up. Serves `GET /frame` (latest JPEG), `GET /seq`, `GET /geometry` (crop/scale transform), `GET /health` (includes watcher errors). |
 | `agent/parser_client.py` | POSTs frames to `OMNIPARSER_URL` (OmniParser/YOLO11), normalizes labeled UI boxes. Falls back to raw frame when the parser is down. Optional daemon: `POST /parse`, `GET /boxes`. |
-| `agent/brain_client.py` | Sends frame+boxes to the vision lane (OpenAI-compatible `BRAIN_URL`, model `qwen-vl`) for action JSON. Retries to `BRAIN_OVERFLOW_URL` (OpenRouter) on timeout/429/503. Daemon = the perception loop (eyes → parser → brain → hands) with `GET /last`, `POST /instruction`. |
-| `agent/hands.py` | Executes action JSON. Playwright-over-CDP first, PyAutoGUI humanized bezier mouse + typewrite fallback, xdotool last resort. Daemon: `POST /act`, `GET /health`. |
+| `agent/brain_client.py` | Sends frame+boxes to the vision lane (OpenAI-compatible `BRAIN_URL`, model `qwen-vl`) for action JSON. Retries to `BRAIN_OVERFLOW_URL` (OpenRouter) on timeout/connection failure/429/503. Daemon = the perception loop (eyes → parser → brain → hands) with `GET /last`, `POST /instruction` (a new goal re-decides immediately, no screen change needed; non-terminal actions re-decide after `BRAIN_STALL_SECONDS` on a static screen). |
+| `agent/hands.py` | Executes action JSON. Playwright-over-CDP first, PyAutoGUI humanized bezier mouse + typewrite fallback, xdotool last resort. Inverse-maps 1024x768 frame coords to the real display geometry (and page viewport) so clicks land correctly on any resolution. Daemon: `POST /act` (1 MB cap), `GET /health`. |
 | `agent/aider_loop.py` | tmux-managed aider in `--architect` mode (OpenRouter architect + local qwen-coder editor). After edits land it reloads the app in agent Chrome, captures screenshot + console logs, and feeds a bug report back to aider. Non-stop, exponential backoff. |
 | `agent/livekit_participant.py` | Joins the LiveKit room as `agentNNN`, publishes the screen as a share track, subscribes to audio. No-ops cleanly without the `livekit` package. |
 | `agent/run.sh` | Launcher: `./run.sh <AGENT_INDEX>` wires every limb for one desktop. |
@@ -71,14 +71,17 @@ qwen-vl `:8083`, bge-m3 `:8084`; LiteLLM/Argon gateway `http://127.0.0.1:8090`.
 | `BRAIN_OVERFLOW_MODEL` | `qwen/qwen2.5-vl-32b-instruct` | Overflow model id. |
 | `BRAIN_OVERFLOW_API_KEY` | unset | OpenRouter key — **env only, never hardcode**. |
 | `AGENT_INSTRUCTION` | `Wait for further instructions.` | Goal the brain acts toward; also settable live via `POST /instruction`. |
-| `BRAIN_POLL_INTERVAL` | `0.5` | Loop poll seconds. |
+| `BRAIN_POLL_INTERVAL` | `0.5` | Loop poll seconds. `BRAIN_STALL_SECONDS` (30) re-decides on a static screen when the last action wasn't `done`/`none`. |
+| `AGENT_TOKEN` | unset | Optional shared secret for all limb HTTP endpoints. When set, eyes/hands/parser/brain require `Authorization: Bearer <token>` (or `X-Agent-Token`) and siblings attach it automatically. |
 | `AIDER_WORKDIR` | unset | Directory aider edits. Required for the aider limb. |
 | `AIDER_APP_URL` | unset | App URL reloaded for visual verification. Required for the aider limb. |
 | `AIDER_TASK` | unset | Initial instruction sent to aider on start. |
+| `AIDER_EDITOR_URL` | `http://127.0.0.1:8081/v1` | OpenAI-compatible base for aider's `--editor-model` — the local qwen-coder lane, **separate** from `BRAIN_URL` (which is the vision brain). |
+| `AIDER_EDITOR_MODEL` | `qwen-coder` | Editor model name on `AIDER_EDITOR_URL`. |
 | `ARCHITECT_MODEL` | `anthropic/claude-sonnet-4` | OpenRouter model id for aider `--model`. |
 | `OPENROUTER_API_KEY` | unset | OpenRouter key for the architect — env only. |
 | `AIDER_BIN` | `aider` | aider executable. `AIDER_IDLE_SECONDS` = quiet period before app check (20). |
-| `LIVEKIT_URL` / `LIVEKIT_TOKEN` | unset | Room ws URL + join token. Both required for the voice lane. |
+| `LIVEKIT_URL` / `LIVEKIT_TOKEN` | unset | Room ws(s) URL + join token. Both required for the voice lane. `ws://` to a non-loopback host logs a warning — the token travels unencrypted; prefer `wss://` on untrusted paths. |
 | `LIVEKIT_IDENTITY` | `agentNNN` | Participant name. `LIVEKIT_FPS` = share rate (2). |
 
 ## Action JSON contract
@@ -148,7 +151,9 @@ curl -s -XPOST http://127.0.0.1:8501/act \
 - `livekit` package missing → voice lane logs and exits 0; everything else runs.
 - `pyautogui` missing → hands use playwright → xdotool.
 - `OMNIPARSER_URL` unset/down → brain sees the raw frame with `boxes: []`.
-- `BRAIN_URL` timeout / 429 / 503 → one retry against `BRAIN_OVERFLOW_URL`.
-- Display hiccups → eyes keeps polling instead of dying.
+- `BRAIN_URL` timeout / connection failure / 429 / 503 → one retry against `BRAIN_OVERFLOW_URL`.
+- Display hiccups → eyes keeps polling instead of dying; `/health` reports `watcher_error` while X is unreachable.
+- Chrome not up yet → hands retries the CDP connect on every action until it succeeds.
+- All limb daemons bind `127.0.0.1` only; set `AGENT_TOKEN` to also require a bearer token on every endpoint.
+- All secrets come from env vars only — nothing is hardcoded.
 
-All secrets come from env vars only — nothing is hardcoded.

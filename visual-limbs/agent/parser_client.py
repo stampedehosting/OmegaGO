@@ -33,6 +33,21 @@ OMNIPARSER_URL = os.environ.get("OMNIPARSER_URL", "").rstrip("/")
 PARSER_TIMEOUT = float(os.environ.get("PARSER_TIMEOUT", "10"))
 FRAME_W = int(os.environ.get("EYES_WIDTH", "1024"))
 FRAME_H = int(os.environ.get("EYES_HEIGHT", "768"))
+# Optional shared secret for the limb endpoints (see hands.py / README).
+AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "")
+MAX_BODY = int(os.environ.get("PARSER_MAX_BODY", str(8 * 1024 * 1024)))
+
+
+def _headers() -> dict:
+    return {"Authorization": f"Bearer {AGENT_TOKEN}"} if AGENT_TOKEN else {}
+
+
+def _authorized(handler: BaseHTTPRequestHandler) -> bool:
+    if not AGENT_TOKEN:
+        return True
+    auth = handler.headers.get("Authorization", "")
+    token = handler.headers.get("X-Agent-Token", "")
+    return auth == f"Bearer {AGENT_TOKEN}" or token == AGENT_TOKEN
 
 
 def _clamp(v: float, lo: float, hi: float) -> int:
@@ -162,6 +177,13 @@ def serve(port: int) -> None:
             self.wfile.write(body)
 
         def do_POST(self) -> None:  # noqa: N802
+            if not _authorized(self):
+                self._json(401, {"error": "unauthorized"})
+                return
+            length = int(self.headers.get("Content-Length", "0") or 0)
+            if length > MAX_BODY:
+                self._json(413, {"error": "body too large"})
+                return
             if self.path == "/parse":
                 jpeg = _read_body(self)
                 if not jpeg:
@@ -172,6 +194,9 @@ def serve(port: int) -> None:
                 self._json(404, {"error": "unknown path"})
 
         def do_GET(self) -> None:  # noqa: N802
+            if not _authorized(self):
+                self._json(401, {"error": "unauthorized"})
+                return
             if self.path == "/health":
                 self._json(200, {"ok": True,
                                  "parser": OMNIPARSER_URL or None})
@@ -180,7 +205,8 @@ def serve(port: int) -> None:
                     self._json(503, {"error": "EYES_URL not set"})
                     return
                 try:
-                    r = requests.get(f"{eyes_url}/frame", timeout=10)
+                    r = requests.get(f"{eyes_url}/frame", headers=_headers(),
+                                     timeout=10)
                     r.raise_for_status()
                 except Exception as exc:
                     self._json(502, {"error": f"eyes unreachable: {exc}"})

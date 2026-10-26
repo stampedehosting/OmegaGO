@@ -52,6 +52,24 @@ FRAME_H = int(os.environ.get("EYES_HEIGHT", "768"))
 ALLOWED_ACTIONS = {"click", "type", "key", "scroll", "goto",
                    "wait", "done", "none", "noop"}
 NOOP_ACTIONS = {"wait", "done", "none", "noop"}
+# Optional shared secret: when set, every endpoint requires
+# "Authorization: Bearer <AGENT_TOKEN>" or "X-Agent-Token: <token>".
+AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "")
+MAX_BODY = int(os.environ.get("HANDS_MAX_BODY", str(1024 * 1024)))  # 1 MB
+
+
+def authorized(handler: BaseHTTPRequestHandler) -> bool:
+    """Optional shared-secret gate — open when AGENT_TOKEN is unset."""
+    if not AGENT_TOKEN:
+        return True
+    auth = handler.headers.get("Authorization", "")
+    token = handler.headers.get("X-Agent-Token", "")
+    return auth == f"Bearer {AGENT_TOKEN}" or token == AGENT_TOKEN
+
+
+def auth_headers() -> dict:
+    """Headers sibling daemons should attach when AGENT_TOKEN is set."""
+    return {"Authorization": f"Bearer {AGENT_TOKEN}"} if AGENT_TOKEN else {}
 
 _KEY_ALIASES = {
     "enter": "enter", "return": "enter", "esc": "escape", "escape": "escape",
@@ -97,12 +115,23 @@ class Hands:
         self._page = None
 
     # -- playwright lane ------------------------------------------------------
+    def _reset_pw(self) -> None:
+        try:
+            if self._pw is not None:
+                self._pw.stop()
+        except Exception:
+            pass
+        self._pw = self._browser = self._page = None
+
     def _get_page(self):
         if not HAS_PLAYWRIGHT:
             return None
         try:
-            if self._pw is None:
-                self._pw = sync_playwright().start()
+            if self._browser is None:
+                # (Re)connect every call until it succeeds — Chrome may start
+                # after the hands daemon.
+                if self._pw is None:
+                    self._pw = sync_playwright().start()
                 self._browser = self._pw.chromium.connect_over_cdp(self.cdp_url)
             ctx = self._browser.contexts[0] if self._browser.contexts else None
             if ctx is None:
@@ -113,8 +142,47 @@ class Hands:
                 return self._page
         except Exception as exc:
             print(f"[hands] playwright/CDP unavailable: {exc}", flush=True)
-            self._page = None
+            self._reset_pw()  # drop the half-open session, retry next action
         return self._page
+
+    # -- coordinate mapping ----------------------------------------------------
+    def _display_size(self) -> tuple[int, int]:
+        """Native display size for inverse frame->display mapping."""
+        if HAS_PYAUTOGUI:
+            try:
+                size = pyautogui.size()
+                return int(size.width), int(size.height)
+            except Exception:
+                pass
+        if HAS_XDOTOOL:
+            try:
+                out = subprocess.run(
+                    ["xdotool", "getdisplaygeometry"],
+                    capture_output=True, text=True, timeout=10)
+                if out.returncode == 0:
+                    w, h = out.stdout.split()[:2]
+                    return int(w), int(h)
+            except Exception:
+                pass
+        return FRAME_W, FRAME_H
+
+    def _to_display(self, fx: float, fy: float) -> tuple[int, int]:
+        """Inverse of eyes' center-crop+scale: frame px -> display px.
+
+        eyes crops the display to the frame aspect ratio then rescales to
+        FRAME_W x FRAME_H; here we undo it so desktop-lane clicks land on the
+        real target (monitor origin assumed 0,0 for the primary display).
+        """
+        dw, dh = self._display_size()
+        target_ratio = FRAME_W / FRAME_H
+        if dw / dh > target_ratio:  # sides were cropped
+            crop_w, crop_h, x0, y0 = int(dh * target_ratio), dh, \
+                (dw - int(dh * target_ratio)) // 2, 0
+        else:  # top/bottom were cropped
+            crop_w, crop_h = dw, int(dw / target_ratio)
+            x0, y0 = 0, (dh - crop_h) // 2
+        return (int(x0 + fx * crop_w / FRAME_W),
+                int(y0 + fy * crop_h / FRAME_H))
 
     # -- pyautogui lane -------------------------------------------------------
     @staticmethod
@@ -139,22 +207,29 @@ class Hands:
 
     # -- individual actions ----------------------------------------------------
     def click(self, x: int, y: int) -> dict:
-        x, y = _clamp(x, FRAME_W), _clamp(y, FRAME_H)
+        fx, fy = _clamp(x, FRAME_W), _clamp(y, FRAME_H)
         page = self._get_page()
         if page is not None:
             try:
-                page.mouse.move(x, y, steps=random.randint(10, 25))
-                page.mouse.click(x, y)
-                return {"ok": True, "via": "playwright", "at": [x, y]}
+                # Scale frame coords onto the page viewport (browser assumed
+                # to fill the captured desktop area).
+                vp = page.viewport_size or {"width": FRAME_W,
+                                          "height": FRAME_H}
+                vx = int(fx * vp["width"] / FRAME_W)
+                vy = int(fy * vp["height"] / FRAME_H)
+                page.mouse.move(vx, vy, steps=random.randint(10, 25))
+                page.mouse.click(vx, vy)
+                return {"ok": True, "via": "playwright", "at": [vx, vy]}
             except Exception:
                 self._page = None  # fall through to desktop input
+        dx, dy = self._to_display(fx, fy)
         if HAS_PYAUTOGUI:
-            self._pg_move(x, y)
+            self._pg_move(dx, dy)
             time.sleep(random.uniform(0.05, 0.15))
-            pyautogui.click(x, y)
-            return {"ok": True, "via": "pyautogui", "at": [x, y]}
-        if self._xdo("mousemove", str(x), str(y), "click", "1"):
-            return {"ok": True, "via": "xdotool", "at": [x, y]}
+            pyautogui.click(dx, dy)
+            return {"ok": True, "via": "pyautogui", "at": [dx, dy]}
+        if self._xdo("mousemove", str(dx), str(dy), "click", "1"):
+            return {"ok": True, "via": "xdotool", "at": [dx, dy]}
         return {"ok": False, "error": "no click actuator available"}
 
     def type(self, text: str) -> dict:
@@ -273,10 +348,21 @@ def serve(hands: Hands, port: int) -> None:
             self.wfile.write(body)
 
         def do_POST(self) -> None:  # noqa: N802
+            if not authorized(self):
+                self._json(401, {"ok": False, "error": "unauthorized"})
+                return
             if self.path != "/act":
                 self._json(404, {"error": "unknown path"})
                 return
-            length = int(self.headers.get("Content-Length", "0") or 0)
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+            except ValueError:
+                self._json(400, {"ok": False, "error": "bad Content-Length"})
+                return
+            if length > MAX_BODY:
+                self._json(413, {"ok": False,
+                                 "error": f"body exceeds {MAX_BODY} bytes"})
+                return
             try:
                 action: Any = json.loads(self.rfile.read(length) or b"{}")
             except Exception as exc:
@@ -285,6 +371,9 @@ def serve(hands: Hands, port: int) -> None:
             self._json(200, hands.execute(action))
 
         def do_GET(self) -> None:  # noqa: N802
+            if not authorized(self):
+                self._json(401, {"ok": False, "error": "unauthorized"})
+                return
             if self.path == "/health":
                 self._json(200, {
                     "ok": True,

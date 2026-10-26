@@ -48,6 +48,25 @@ BRAIN_OVERFLOW_API_KEY = os.environ.get("BRAIN_OVERFLOW_API_KEY", "")
 EYES_URL = os.environ.get("EYES_URL", "").rstrip("/")
 HANDS_URL = os.environ.get("HANDS_URL", "").rstrip("/")
 POLL_INTERVAL = float(os.environ.get("BRAIN_POLL_INTERVAL", "0.5"))
+# Re-run decide() on an unchanged screen after this many seconds when the
+# last action wasn't terminal (done/none) — lets the agent keep working a
+# goal even when pixels stall.
+STALL_SECONDS = float(os.environ.get("BRAIN_STALL_SECONDS", "30"))
+# Optional shared secret for the limb endpoints (see hands.py / README).
+AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "")
+MAX_BODY = 1024 * 1024
+
+
+def _headers() -> dict:
+    return {"Authorization": f"Bearer {AGENT_TOKEN}"} if AGENT_TOKEN else {}
+
+
+def _authorized(handler: BaseHTTPRequestHandler) -> bool:
+    if not AGENT_TOKEN:
+        return True
+    auth = handler.headers.get("Authorization", "")
+    token = handler.headers.get("X-Agent-Token", "")
+    return auth == f"Bearer {AGENT_TOKEN}" or token == AGENT_TOKEN
 
 ACTIONS_DOC = (
     'Reply with ONE JSON object only, no prose. Schema: '
@@ -94,8 +113,8 @@ def _extract_json(text: str) -> dict:
 
 
 def _is_overflowable(exc: Exception) -> bool:
-    """Timeout or slot-full/rate-limit style failures justify overflow."""
-    if isinstance(exc, requests.Timeout):
+    """Network failure or slot-full/rate-limit failures justify overflow."""
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
         return True
     resp = getattr(exc, "response", None)
     code = getattr(resp, "status_code", None)
@@ -148,7 +167,7 @@ def decide(instruction: str, frame_jpeg: bytes, boxes: list | None = None) -> di
 
 def post_action(hands_url: str, action: dict) -> dict:
     resp = requests.post(f"{hands_url.rstrip('/')}/act",
-                         json=action, timeout=30)
+                         json=action, headers=_headers(), timeout=30)
     resp.raise_for_status()
     return resp.json()
 
@@ -165,24 +184,41 @@ class PerceptionLoop:
             "AGENT_INSTRUCTION", "Wait for further instructions.")
         self.last_action: dict[str, Any] = {}
         self.running = False
+        # Bumped by POST /instruction — a new goal reprocesses the frame even
+        # when the screen has not changed.
+        self.instruction_rev = 0
+        self._seen_seq = -1
+        self._seen_rev = -1
+        self._last_decide_at = 0.0
+        self._last_terminal = True
 
     def _get(self, path: str) -> requests.Response:
-        r = requests.get(f"{self.eyes_url}{path}", timeout=15)
+        r = requests.get(f"{self.eyes_url}{path}", headers=_headers(),
+                         timeout=15)
         r.raise_for_status()
         return r
 
-    def step(self, last_seq: int) -> int:
+    def step(self) -> None:
         seq = self._get("/seq").json().get("seq", 0)
-        if seq <= last_seq:
-            return last_seq
+        new_instruction = self.instruction_rev != self._seen_rev
+        stalled = (
+            not self._last_terminal and self._last_decide_at
+            and time.time() - self._last_decide_at >= STALL_SECONDS
+        )
+        if seq <= self._seen_seq and not new_instruction and not stalled:
+            return
         frame = self._get("/frame").content
         parsed = parse_frame(frame, self.parser_url)
-        action = decide(self.instruction, frame, parsed.get("boxes"))
-        action = self._sanitize(action)
+        action = self._sanitize(
+            decide(self.instruction, frame, parsed.get("boxes")))
+        self._seen_seq = seq
+        self._seen_rev = self.instruction_rev
+        self._last_decide_at = time.time()
+        self._last_terminal = action.get("action") in ("done", "none")
         self.last_action = {"action": action, "seq": seq,
                             "boxes": parsed.get("count", 0),
                             "parser_raw": parsed.get("raw", True),
-                            "at": time.time()}
+                            "at": self._last_decide_at}
         if self.hands_url:
             try:
                 self.last_action["result"] = post_action(self.hands_url, action)
@@ -190,7 +226,6 @@ class PerceptionLoop:
                 self.last_action["result"] = {"ok": False, "error": str(exc)}
         print(f"[brain] seq={seq} action={action.get('action')} "
               f"raw={parsed.get('raw')}", flush=True)
-        return seq
 
     @staticmethod
     def _sanitize(action: dict) -> dict:
@@ -200,13 +235,12 @@ class PerceptionLoop:
 
     def run(self) -> None:
         self.running = True
-        last_seq = -1
         backoff = POLL_INTERVAL
         print(f"[brain] loop eyes={self.eyes_url} hands={self.hands_url} "
               f"instruction={self.instruction!r}", flush=True)
         while self.running:
             try:
-                last_seq = self.step(last_seq)
+                self.step()
                 backoff = POLL_INTERVAL
             except Exception as exc:
                 print(f"[brain] loop error: {exc} (retry in {backoff:.1f}s)",
@@ -228,6 +262,9 @@ def serve(loop: PerceptionLoop, port: int) -> None:
             self.wfile.write(body)
 
         def do_GET(self) -> None:  # noqa: N802
+            if not _authorized(self):
+                self._json(401, {"ok": False, "error": "unauthorized"})
+                return
             if self.path == "/health":
                 self._json(200, {"ok": True, "running": loop.running})
             elif self.path == "/last":
@@ -237,12 +274,19 @@ def serve(loop: PerceptionLoop, port: int) -> None:
                                  "paths": ["/health", "/last"]})
 
         def do_POST(self) -> None:  # noqa: N802
+            if not _authorized(self):
+                self._json(401, {"ok": False, "error": "unauthorized"})
+                return
             # POST /instruction {"instruction": "..."} — retarget the agent.
             if self.path == "/instruction":
                 length = int(self.headers.get("Content-Length", "0") or 0)
+                if length > MAX_BODY:
+                    self._json(413, {"error": "body too large"})
+                    return
                 try:
                     body = json.loads(self.rfile.read(length) or b"{}")
                     loop.instruction = str(body["instruction"])
+                    loop.instruction_rev += 1  # force a re-decide next step
                     self._json(200, {"ok": True,
                                      "instruction": loop.instruction})
                 except Exception as exc:
