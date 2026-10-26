@@ -11,8 +11,10 @@ Group=omegago
 WorkingDirectory=/opt/omegago/visual-limbs/router
 # Mesh-facing by default: agent desktops/workers reach the gateway over the
 # LAN. Every request still needs a valid virtual/master key — the bind is not
-# an auth boundary. Set ROUTER_HOST=127.0.0.1 in router.env to run
-# loopback-only (e.g. when everything goes through the Argon gateway :8090).
+# an auth boundary. Bearer keys travel over plain HTTP, so on any segment you
+# do not fully trust, either pin ROUTER_HOST to a private/overlay interface
+# (e.g. the Contabo LAN or a WireGuard/Tailscale IP) or set 127.0.0.1 and
+# terminate TLS in front (Argon gateway :8090 / Caddy / cloudflared).
 Environment=ROUTER_HOST=0.0.0.0
 Environment=ROUTER_PORT=8000
 EnvironmentFile=-/etc/omegago/router.env

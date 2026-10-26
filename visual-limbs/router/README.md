@@ -55,7 +55,7 @@ and traffic falls through to the next lane.
 | `DATABASE_URL` | for keys | LiteLLM Postgres DSN — required for `/key/generate` (virtual keys persist there) |
 | `FLEET_QWEN_CODER_URL` / `FLEET_GEMMA_URL` / `FLEET_QWEN_VL_URL` / `FLEET_BGE_M3_URL` | lane 3 | OpenAI-compatible base URLs (`http://host:port/v1`) on parked fleet hosts |
 | `ROUTER_URL` | scripts | default `http://127.0.0.1:8000` |
-| `ROUTER_HOST` / `ROUTER_PORT` | no | gateway bind, default `0.0.0.0:8000` (mesh-facing; key auth still required). Set `127.0.0.1` to serve loopback only via the Argon gateway |
+| `ROUTER_HOST` / `ROUTER_PORT` | no | gateway bind, default `0.0.0.0:8000` (mesh-facing; key auth still required). Keys travel as HTTP bearer tokens — on untrusted segments pin `ROUTER_HOST` to a private/overlay interface or set `127.0.0.1` and terminate TLS in front (Argon :8090, Caddy, cloudflared) |
 | `ROUTER_HEALTH_HOST` / `ROUTER_HEALTH_PORT` | no | sidecar bind, default `127.0.0.1:8010` |
 | `HEALTH_PROBE_TIMEOUT` / `HEALTH_SATURATION_WARN` | no | probe timeout secs (2.5) and saturation warn threshold (0.9) |
 | `ROUTER_API_KEY`, `KEY_MAX_BUDGET`, `KEY_DURATION`, `KEYS_FILE` | no | script overrides |

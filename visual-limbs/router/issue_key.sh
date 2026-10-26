@@ -43,7 +43,11 @@ if [[ ${#MODELS[@]} -eq 0 ]]; then
   MODELS=("${PUBLIC_MODELS[@]}")
 else
   for m in "${MODELS[@]}"; do
-    [[ " ${PUBLIC_MODELS[*]} " == *" $m "* ]] || {
+    ok=0
+    for p in "${PUBLIC_MODELS[@]}"; do
+      [[ "$m" == "$p" ]] && { ok=1; break; }
+    done
+    [[ $ok -eq 1 ]] || {
       echo "error: '$m' is not a public model (allowed: ${PUBLIC_MODELS[*]})" >&2
       exit 1
     }
